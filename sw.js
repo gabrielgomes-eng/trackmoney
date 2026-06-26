@@ -12,7 +12,11 @@ const LOCAL_ASSETS = [
   '/script.js',
   '/manifest.json',
   '/icon-192.png',
-  '/icon-512.png'
+  '/icon-512.png',
+  '/logo.png',
+  '/favicon.ico',
+  '/favicon-32.png',
+  '/apple-touch-icon.png'
 ];
 
 // Bibliotecas externas (CDN) — necessárias pro app funcionar mesmo offline
