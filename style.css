@@ -1637,3 +1637,144 @@ body {
     white-space: nowrap;
   }
 }
+
+/* ══════════════════════════════════════
+   MOBILE TABLES & TABS FIX
+   ══════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* Tabelas viram cards no mobile */
+  .data-table { display: block; }
+  .data-table thead { display: none; }
+  .data-table tbody { display: flex; flex-direction: column; gap: 8px; }
+  .data-table tr {
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    gap: 6px;
+  }
+  .data-table tr.empty-row {
+    background: none;
+    border: none;
+    padding: 0;
+  }
+  .data-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+    border: none;
+    font-size: .82rem;
+  }
+  /* Label automático via data-label */
+  .data-table td::before {
+    content: attr(data-label);
+    font-size: .7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    margin-right: 8px;
+  }
+  /* Última td (ações) sem label */
+  .data-table td:last-child::before { content: ''; }
+  .data-table td:last-child { justify-content: flex-end; }
+
+  /* Page header */
+  .page-header {
+    flex-direction: row !important;
+    align-items: center !important;
+    flex-wrap: nowrap;
+  }
+
+  .page-header h1 { font-size: 1.1rem; }
+
+  /* Botão nova receita/despesa — só ícone no mobile */
+  .page-header .btn span { display: none; }
+  .page-header .btn {
+    padding: 8px 10px;
+    min-width: 36px;
+  }
+
+  /* Filters */
+  .filters-bar {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* Summary grid 2 colunas */
+  .summary-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .summary-card:last-child { grid-column: span 2; }
+
+  /* Card menor */
+  .summary-card { padding: 12px; gap: 10px; }
+  .card-icon { width: 36px; height: 36px; }
+  .card-value { font-size: .95rem; }
+  .card-label { font-size: .62rem; }
+
+  /* Charts menores */
+  .chart-wrapper { height: 180px; }
+
+  /* Metas grid */
+  .metas-grid { grid-template-columns: 1fr; }
+
+  /* Contas */
+  .conta-item { flex-wrap: nowrap; }
+
+  /* Config */
+  .add-categoria-form { flex-direction: column; }
+  .config-actions .btn { font-size: .82rem; }
+
+  /* Grid 2 → 1 */
+  .grid-2 { grid-template-columns: 1fr; }
+
+  /* Modais sobem de baixo */
+  .modal {
+    border-radius: 20px 20px 0 0;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    max-width: 100%;
+    max-height: 92vh;
+    animation: slideFromBottom .25s ease;
+  }
+  .modal-overlay { align-items: flex-end; padding: 0; }
+
+  @keyframes slideFromBottom {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+
+  /* Topbar compacta */
+  .topbar { height: 54px; padding: 0 12px; gap: 8px; }
+  .topbar-title { font-size: .88rem; }
+  #currentMonthLabel { font-size: .75rem; white-space: nowrap; }
+
+  /* Profile btn */
+  .profile-btn span { display: none; }
+  #profileChevron { display: none; }
+  .profile-btn { padding: 3px; }
+
+  /* Profile dropdown full width */
+  .profile-dropdown { width: calc(100vw - 24px); right: -8px; }
+
+  /* Page padding */
+  .page { padding: 16px 12px 80px; }
+
+  /* Relatórios charts */
+  .charts-grid.three-cols { grid-template-columns: 1fr; }
+  .span-2 { grid-column: auto; }
+}
+
+/* ── Safe area iPhone ── */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .page { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+  .topbar { padding-top: env(safe-area-inset-top); }
+}
