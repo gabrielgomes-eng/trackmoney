@@ -922,6 +922,72 @@ function initEvents(){
 /* ══════════════════════════════════════
    INIT
    ══════════════════════════════════════ */
+/* ══════════════════════════════════════
+   PWA — INSTALAR + NOTIFICAÇÕES
+   ══════════════════════════════════════ */
+
+let deferredInstallPrompt = null;
+
+// Captura o evento de instalação do browser
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+
+  // Mostra o botão instalar
+  const btn = document.getElementById('btnInstall');
+  if (btn) btn.style.display = 'flex';
+});
+
+// Quando o app for instalado, esconde o botão
+window.addEventListener('appinstalled', () => {
+  const btn = document.getElementById('btnInstall');
+  if (btn) btn.style.display = 'none';
+  deferredInstallPrompt = null;
+  toast('App instalado com sucesso! 🎉');
+});
+
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'granted') return;
+  if (Notification.permission === 'denied') return;
+
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      toast('Notificações ativadas! 🔔');
+      // Salva preferência no Firestore se logado
+      if (uid) {
+        await userDoc().set({ notificacoesAtivas: true }, { merge: true });
+      }
+    }
+  } catch(err) {
+    console.log('Notificação negada:', err);
+  }
+}
+
+async function installPWA() {
+  if (!deferredInstallPrompt) {
+    toast('App já está instalado ou não é suportado neste browser', 'info');
+    return;
+  }
+
+  // Mostra prompt de instalação
+  deferredInstallPrompt.prompt();
+
+  const { outcome } = await deferredInstallPrompt.userChoice;
+
+  if (outcome === 'accepted') {
+    // Após aceitar instalar, pede permissão de notificação
+    setTimeout(async () => {
+      await requestNotificationPermission();
+    }, 1500);
+  }
+
+  deferredInstallPrompt = null;
+  const btn = document.getElementById('btnInstall');
+  if (btn) btn.style.display = 'none';
+}
+
 window.editReceita     = editReceita;
 window.editDespesa     = editDespesa;
 window.editMeta        = editMeta;
@@ -932,4 +998,7 @@ window.removeCategoria = removeCategoria;
 document.addEventListener('DOMContentLoaded', () => {
   initEvents();
   initAuth();
+
+  // Botão instalar
+  document.getElementById('btnInstall')?.addEventListener('click', installPWA);
 });
