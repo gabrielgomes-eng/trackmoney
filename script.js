@@ -22,13 +22,20 @@ function userDoc() {
 }
 
 /* ══════════════════════════════════════
+   CONSTANTES
+   ══════════════════════════════════════ */
+const CATEGORIAS_PADRAO = ['Alimentação','Transporte','Moradia','Saúde','Educação','Lazer','Investimentos','Outros'];
+const STATUS_PAGO = 'pago';
+const STATUS_PENDENTE = 'pendente';
+
+/* ══════════════════════════════════════
    STATE  (cache local — espelho do Firestore)
    ══════════════════════════════════════ */
 const STATE = {
   receitas:     [],
   despesas:     [],
   metas:        [],
-  categorias:   ['Alimentação','Transporte','Moradia','Saúde','Educação','Lazer','Investimentos','Outros'],
+  categorias:   [...CATEGORIAS_PADRAO],
   metaEconomia: 0,
   currentMonth: new Date().getMonth(),
   currentYear:  new Date().getFullYear(),
@@ -73,6 +80,34 @@ function filterByMonth(arr) {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+// Redimensiona e comprime uma imagem (File) para um base64 JPEG pequeno,
+// evitando ultrapassar o limite de 1MB por documento no Firestore.
+function resizeImageToBase64(file, maxW = 200, maxH = 200, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        const ratio = Math.min(maxW / width, maxH / height, 1);
+        width  = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => reject(new Error('Não foi possível carregar a imagem.'));
+      img.src = ev.target.result;
+    };
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 /* ══════════════════════════════════════
@@ -256,11 +291,6 @@ function onLogin(user) {
     document.getElementById('userChip').classList.toggle('open');
   };
 
-  document.addEventListener('click', (e) => {
-    const chip2 = document.getElementById('userChip');
-    if (chip2 && !chip2.contains(e.target)) chip2.classList.remove('open');
-  });
-
   document.getElementById('btnLogout').onclick = logout;
 
   document.getElementById('btnEditName').onclick = () => {
@@ -290,17 +320,13 @@ function onLogin(user) {
   document.getElementById('inputChangePhoto').onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const base64 = ev.target.result;
-      try {
-        await userDoc().set({ photoURL: base64 }, { merge: true });
-        document.getElementById('userAvatar').src       = base64;
-        document.getElementById('profileAvatarBig').src = base64;
-        toast('Foto atualizada!');
-      } catch(err) { toast('Erro ao salvar foto: ' + err.message, 'error'); }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const base64 = await resizeImageToBase64(file, 200, 200);
+      await userDoc().set({ photoURL: base64 }, { merge: true });
+      document.getElementById('userAvatar').src       = base64;
+      document.getElementById('profileAvatarBig').src = base64;
+      toast('Foto atualizada!');
+    } catch(err) { toast('Erro ao salvar foto: ' + err.message, 'error'); }
   };
 
   attachListeners();
@@ -424,15 +450,18 @@ function renderDashboard() {
   const desp = filterByMonth(STATE.despesas);
   const totalRec  = rec.reduce((a,r)=>a+r.valor,0);
   const totalDesp = desp.reduce((a,d)=>a+d.valor,0);
-  const saldo     = totalRec - totalDesp;
+  const economiaMes = totalRec - totalDesp;
 
-  document.getElementById('saldoAtual').textContent    = fmt(saldo);
+  // Saldo Atual = saldo acumulado de TODOS os lançamentos (não só do mês selecionado)
+  const saldoGeral = STATE.receitas.reduce((a,r)=>a+r.valor,0) - STATE.despesas.reduce((a,d)=>a+d.valor,0);
+
+  document.getElementById('saldoAtual').textContent    = fmt(saldoGeral);
   document.getElementById('totalReceitas').textContent = fmt(totalRec);
   document.getElementById('totalDespesas').textContent = fmt(totalDesp);
-  document.getElementById('economia').textContent      = fmt(saldo);
+  document.getElementById('economia').textContent      = fmt(economiaMes);
   document.getElementById('totalLancamentos').textContent = rec.length + desp.length;
 
-  document.getElementById('saldoAtual').style.color = saldo < 0 ? 'var(--danger)' : saldo === 0 ? 'var(--text-primary)' : 'var(--accent)';
+  document.getElementById('saldoAtual').style.color = saldoGeral < 0 ? 'var(--danger)' : saldoGeral === 0 ? 'var(--text-primary)' : 'var(--accent)';
 
   renderChartDashboard();
   renderRecentTransactions([...rec, ...desp]);
@@ -618,7 +647,7 @@ function renderDespesas() {
 
   const tbody=document.getElementById('bodyDespesas');
   if(!items.length){tbody.innerHTML=`<tr class="empty-row"><td colspan="6"><div class="empty-state"><iconify-icon icon="mdi:cash-minus" width="40"></iconify-icon><p>Nenhuma despesa encontrada</p></div></td></tr>`;return;}
-  tbody.innerHTML=items.map(d=>`<tr><td data-label="Descrição">${d.descricao}</td><td data-label="Valor" style="color:var(--danger);font-weight:700">${fmt(d.valor)}</td><td data-label="Data">${fmtDate(d.data)}</td><td data-label="Categoria"><span class="chip chip-expense">${d.categoria}</span></td><td data-label="Status"><span class="chip chip-${d.status}">${d.status==='pago'?'Pago':'Pendente'}</span></td><td>${d.status==='pendente'?`<button class="action-btn pay" title="Marcar pago" onclick="marcarPago('${d.id}')"><iconify-icon icon="mdi:check" width="17"></iconify-icon></button>`:''}<button class="action-btn edit" onclick="editDespesa('${d.id}')"><iconify-icon icon="mdi:pencil-outline" width="17"></iconify-icon></button><button class="action-btn del" onclick="confirmDelete('despesa','${d.id}')"><iconify-icon icon="mdi:trash-can-outline" width="17"></iconify-icon></button></td></tr>`).join('');
+  tbody.innerHTML=items.map(d=>`<tr><td data-label="Descrição">${d.descricao}</td><td data-label="Valor" style="color:var(--danger);font-weight:700">${fmt(d.valor)}</td><td data-label="Data">${fmtDate(d.data)}</td><td data-label="Categoria"><span class="chip chip-expense">${d.categoria}</span></td><td data-label="Status"><span class="chip chip-${d.status}">${d.status===STATUS_PAGO?'Pago':'Pendente'}</span></td><td>${d.status===STATUS_PENDENTE?`<button class="action-btn pay" title="Marcar pago" onclick="marcarPago('${d.id}')"><iconify-icon icon="mdi:check" width="17"></iconify-icon></button>`:''}<button class="action-btn edit" onclick="editDespesa('${d.id}')"><iconify-icon icon="mdi:pencil-outline" width="17"></iconify-icon></button><button class="action-btn del" onclick="confirmDelete('despesa','${d.id}')"><iconify-icon icon="mdi:trash-can-outline" width="17"></iconify-icon></button></td></tr>`).join('');
 }
 
 function openDespesaModal(despesa=null) {
@@ -627,7 +656,7 @@ function openDespesaModal(despesa=null) {
   document.getElementById('modalDespesaTitulo').textContent=despesa?'Editar Despesa':'Nova Despesa';
   document.getElementById('despesaData').value=despesa?despesa.data:today();
   if(despesa){document.getElementById('despesaDescricao').value=despesa.descricao;document.getElementById('despesaValor').value=despesa.valor;document.getElementById('despesaCategoria').value=despesa.categoria;document.getElementById('despesaId').value=despesa.id;document.querySelector(`input[name="despesaStatus"][value="${despesa.status}"]`).checked=true;}
-  else {document.querySelector('input[name="despesaStatus"][value="pendente"]').checked=true;}
+  else {document.querySelector(`input[name="despesaStatus"][value="${STATUS_PENDENTE}"]`).checked=true;}
   openModal('modalDespesa');
 }
 
@@ -636,7 +665,7 @@ function editDespesa(id){const d=STATE.despesas.find(d=>d.id===id);if(d)openDesp
 async function marcarPago(id) {
   try {
     showSync();
-    await col('despesas').doc(id).update({ status:'pago' });
+    await col('despesas').doc(id).update({ status: STATUS_PAGO });
     toast('Conta marcada como paga!');
   } catch(err){toast('Erro: '+err.message,'error');}
 }
@@ -652,7 +681,7 @@ async function saveDespesa(e) {
     valor:     parseFloat(document.getElementById('despesaValor').value),
     data:      document.getElementById('despesaData').value,
     categoria: document.getElementById('despesaCategoria').value,
-    status:    statusEl?statusEl.value:'pendente'
+    status:    statusEl?statusEl.value:STATUS_PENDENTE
   };
   try {
     await fbAdd('despesas', data);
@@ -714,15 +743,15 @@ async function saveMetaEco(e){
    ══════════════════════════════════════ */
 function updateContasBadge(){
   const hoje=new Date();hoje.setHours(0,0,0,0);
-  const vencidas=STATE.despesas.filter(d=>{if(d.status!=='pendente')return false;const dt=new Date(d.data+'T12:00:00');dt.setHours(0,0,0,0);return dt<hoje;});
+  const vencidas=STATE.despesas.filter(d=>{if(d.status!==STATUS_PENDENTE)return false;const dt=new Date(d.data+'T12:00:00');dt.setHours(0,0,0,0);return dt<hoje;});
   const badge=document.getElementById('contasBadge');
   badge.textContent=vencidas.length;
   badge.setAttribute('data-count',vencidas.length);
 }
 
 function renderContas(){
-  const pendentes=STATE.despesas.filter(d=>d.status==='pendente');
-  const pagas=filterByMonth(STATE.despesas).filter(d=>d.status==='pago');
+  const pendentes=STATE.despesas.filter(d=>d.status===STATUS_PENDENTE);
+  const pagas=filterByMonth(STATE.despesas).filter(d=>d.status===STATUS_PAGO);
   const hoje=new Date();hoje.setHours(0,0,0,0);
   const em7=new Date(hoje);em7.setDate(hoje.getDate()+7);
   const vencidas=pendentes.filter(d=>{const dt=new Date(d.data+'T12:00:00');dt.setHours(0,0,0,0);return dt<hoje;});
@@ -763,8 +792,7 @@ async function addCategoria(){
 }
 
 async function removeCategoria(cat){
-  const defaults=['Alimentação','Transporte','Moradia','Saúde','Educação','Lazer','Investimentos','Outros'];
-  if(defaults.includes(cat)){toast('Categorias padrão não podem ser removidas','warning');return;}
+  if(CATEGORIAS_PADRAO.includes(cat)){toast('Categorias padrão não podem ser removidas','warning');return;}
   STATE.categorias=STATE.categorias.filter(c=>c!==cat);
   try{await fbSaveConfig();populateCategorySelects();renderConfiguracoes();toast('Categoria removida');}catch(err){toast('Erro: '+err.message,'error');}
 }
@@ -876,7 +904,7 @@ async function clearAllData(){
     [...rs.docs,...ds.docs,...ms.docs].forEach(d=>batch.delete(d.ref));
     await batch.commit();
     STATE.metaEconomia=0;
-    STATE.categorias=['Alimentação','Transporte','Moradia','Saúde','Educação','Lazer','Investimentos','Outros'];
+    STATE.categorias=[...CATEGORIAS_PADRAO];
     await fbSaveConfig();
     toast('Dados apagados','warning');
   }catch(err){toast('Erro: '+err.message,'error');}
@@ -891,6 +919,11 @@ function initEvents(){
   document.getElementById('menuToggle').addEventListener('click',openSidebar);
   document.getElementById('sidebarClose').addEventListener('click',closeSidebar);
   document.getElementById('overlay').addEventListener('click',closeSidebar);
+  // Fecha o dropdown de perfil ao clicar fora dele (registrado uma única vez)
+  document.addEventListener('click', (e) => {
+    const chip2 = document.getElementById('userChip');
+    if (chip2 && !chip2.contains(e.target)) chip2.classList.remove('open');
+  });
   document.getElementById('themeToggle').addEventListener('click',async()=>{const t=STATE.theme==='light'?'dark':'light';applyTheme(t);await fbSaveConfig();});
   document.getElementById('prevMonth').addEventListener('click',()=>{STATE.currentMonth--;if(STATE.currentMonth<0){STATE.currentMonth=11;STATE.currentYear--;}updateMonthLabel();refreshCurrentPage();});
   document.getElementById('nextMonth').addEventListener('click',()=>{STATE.currentMonth++;if(STATE.currentMonth>11){STATE.currentMonth=0;STATE.currentYear++;}updateMonthLabel();refreshCurrentPage();});
