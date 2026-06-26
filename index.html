@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TrackMoney — Controle de Gastos</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* Garante que login cubra tudo */
+    .login-overlay {
+      position: fixed !important;
+      inset: 0 !important;
+      z-index: 9999 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%) !important;
+    }
+    .login-overlay.hidden {
+      display: none !important;
+    }
+    /* Esconde app até logar */
+    .sidebar, .main-content {
+      visibility: hidden;
+    }
+    body.logged-in .sidebar,
+    body.logged-in .main-content {
+      visibility: visible;
+    }
+  </style>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <!-- jsPDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- Iconify -->
+  <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════════ SIDEBAR ═══════════════════ -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <iconify-icon icon="mdi:finance" width="28"></iconify-icon>
+      <div class="logo-text-wrap">
+        <span class="logo-text">TrackMoney</span>
+        <span class="logo-by">by Gabriel H. Gomes</span>
+      </div>
+    </div>
+    <button class="sidebar-close" id="sidebarClose" aria-label="Fechar menu">
+      <iconify-icon icon="mdi:close" width="22"></iconify-icon>
+    </button>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a class="nav-item active" data-page="dashboard">
+      <iconify-icon icon="mdi:view-dashboard-outline" width="20"></iconify-icon>
+      <span>Dashboard</span>
+    </a>
+    <a class="nav-item" data-page="receitas">
+      <iconify-icon icon="mdi:trending-up" width="20"></iconify-icon>
+      <span>Receitas</span>
+    </a>
+    <a class="nav-item" data-page="despesas">
+      <iconify-icon icon="mdi:trending-down" width="20"></iconify-icon>
+      <span>Despesas</span>
+    </a>
+    <a class="nav-item" data-page="relatorios">
+      <iconify-icon icon="mdi:chart-bar" width="20"></iconify-icon>
+      <span>Relatórios</span>
+    </a>
+    <a class="nav-item" data-page="metas">
+      <iconify-icon icon="mdi:target" width="20"></iconify-icon>
+      <span>Metas</span>
+    </a>
+    <a class="nav-item" data-page="contas">
+      <iconify-icon icon="mdi:calendar-clock" width="20"></iconify-icon>
+      <span>Contas a Pagar</span>
+      <span class="badge" id="contasBadge">0</span>
+    </a>
+    <a class="nav-item" data-page="configuracoes">
+      <iconify-icon icon="mdi:cog-outline" width="20"></iconify-icon>
+      <span>Configurações</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <button class="theme-toggle" id="themeToggle" title="Alternar tema">
+      <iconify-icon icon="mdi:weather-night" width="18" id="themeIcon"></iconify-icon>
+      <span id="themeLabel">Modo Escuro</span>
+    </button>
+  </div>
+</aside>
+
+<!-- ═══════════════════ OVERLAY ═══════════════════ -->
+<div class="overlay" id="overlay"></div>
+
+<!-- ═══════════════════ MAIN ═══════════════════ -->
+<main class="main-content">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <button class="menu-toggle" id="menuToggle" aria-label="Abrir menu">
+      <iconify-icon icon="mdi:menu" width="24"></iconify-icon>
+    </button>
+    <div class="topbar-title" id="topbarTitle">Dashboard</div>
+    <div class="topbar-actions">
+      <div class="month-picker">
+        <button class="btn-icon" id="prevMonth"><iconify-icon icon="mdi:chevron-left" width="20"></iconify-icon></button>
+        <span id="currentMonthLabel">Jan 2025</span>
+        <button class="btn-icon" id="nextMonth"><iconify-icon icon="mdi:chevron-right" width="20"></iconify-icon></button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══════ PAGE: DASHBOARD ══════ -->
+  <section class="page active" id="page-dashboard">
+    <div class="page-header">
+      <h1>Visão Geral</h1>
+      <p class="page-subtitle">Resumo financeiro do mês</p>
+    </div>
+
+    <!-- CARDS SUMMARY -->
+    <div class="summary-grid">
+      <div class="summary-card card-balance">
+        <div class="card-icon"><iconify-icon icon="mdi:wallet-outline" width="24"></iconify-icon></div>
+        <div class="card-info">
+          <span class="card-label">Saldo Atual</span>
+          <span class="card-value" id="saldoAtual">R$ 0,00</span>
+        </div>
+      </div>
+      <div class="summary-card card-income">
+        <div class="card-icon"><iconify-icon icon="mdi:arrow-down-circle-outline" width="24"></iconify-icon></div>
+        <div class="card-info">
+          <span class="card-label">Receitas do Mês</span>
+          <span class="card-value" id="totalReceitas">R$ 0,00</span>
+        </div>
+      </div>
+      <div class="summary-card card-expense">
+        <div class="card-icon"><iconify-icon icon="mdi:arrow-up-circle-outline" width="24"></iconify-icon></div>
+        <div class="card-info">
+          <span class="card-label">Despesas do Mês</span>
+          <span class="card-value" id="totalDespesas">R$ 0,00</span>
+        </div>
+      </div>
+      <div class="summary-card card-savings">
+        <div class="card-icon"><iconify-icon icon="mdi:piggy-bank-outline" width="24"></iconify-icon></div>
+        <div class="card-info">
+          <span class="card-label">Economia</span>
+          <span class="card-value" id="economia">R$ 0,00</span>
+        </div>
+      </div>
+      <div class="summary-card card-count">
+        <div class="card-icon"><iconify-icon icon="mdi:format-list-bulleted" width="24"></iconify-icon></div>
+        <div class="card-info">
+          <span class="card-label">Lançamentos</span>
+          <span class="card-value" id="totalLancamentos">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- DASHBOARD CHARTS -->
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-header">
+          <h3>Despesas por Categoria</h3>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="chartPizza"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-header">
+          <h3>Receitas vs Despesas</h3>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="chartComparativo"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- RECENT TRANSACTIONS -->
+    <div class="card mt-2">
+      <div class="card-header-flex">
+        <h3>Últimos Lançamentos</h3>
+        <button class="btn btn-sm btn-outline" data-page="receitas" data-nav>Ver tudo</button>
+      </div>
+      <div class="transactions-list" id="recentTransactions">
+        <div class="empty-state">
+          <iconify-icon icon="mdi:receipt-text-outline" width="48"></iconify-icon>
+          <p>Nenhum lançamento ainda.<br>Comece adicionando uma receita ou despesa.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ PAGE: RECEITAS ══════ -->
+  <section class="page" id="page-receitas">
+    <div class="page-header">
+      <h1>Receitas</h1>
+      <button class="btn btn-primary" id="btnNovaReceita">
+        <iconify-icon icon="mdi:plus" width="18"></iconify-icon> Nova Receita
+      </button>
+    </div>
+
+    <!-- FILTERS -->
+    <div class="filters-bar">
+      <input type="text" class="filter-input" id="filtroReceitas" placeholder="🔍  Buscar receita...">
+      <select class="filter-select" id="filtroCategoriaReceita">
+        <option value="">Todas as categorias</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <table class="data-table" id="tabelaReceitas">
+        <thead>
+          <tr>
+            <th data-sort="descricao">Descrição <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
+            <th data-sort="valor">Valor <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
+            <th data-sort="data">Data <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
+            <th data-sort="categoria">Categoria <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="bodyReceitas">
+          <tr class="empty-row"><td colspan="5"><div class="empty-state"><iconify-icon icon="mdi:cash-plus" width="40"></iconify-icon><p>Nenhuma receita cadastrada</p></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══════ PAGE: DESPESAS ══════ -->
+  <section class="page" id="page-despesas">
+    <div class="page-header">
+      <h1>Despesas</h1>
+      <button class="btn btn-danger" id="btnNovaDespesa">
+        <iconify-icon icon="mdi:plus" width="18"></iconify-icon> Nova Despesa
+      </button>
+    </div>
+
+    <div class="filters-bar">
+      <input type="text" class="filter-input" id="filtroDespesas" placeholder="🔍  Buscar despesa...">
+      <select class="filter-select" id="filtroCategoriaDespesa">
+        <option value="">Todas as categorias</option>
+      </select>
+      <select class="filter-select" id="filtroStatusDespesa">
+        <option value="">Todos os status</option>
+        <option value="pago">Pago</option>
+        <option value="pendente">Pendente</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <table class="data-table" id="tabelaDespesas">
+        <thead>
+          <tr>
+            <th data-sort="descricao">Descrição <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
+            <th data-sort="valor">Valor <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
+            <th data-sort="data">Data <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
+            <th data-sort="categoria">Categoria <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
+            <th data-sort="status">Status <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="bodyDespesas">
+          <tr class="empty-row"><td colspan="6"><div class="empty-state"><iconify-icon icon="mdi:cash-minus" width="40"></iconify-icon><p>Nenhuma despesa cadastrada</p></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══════ PAGE: RELATÓRIOS ══════ -->
+  <section class="page" id="page-relatorios">
+    <div class="page-header">
+      <h1>Relatórios</h1>
+      <div class="btn-group">
+        <button class="btn btn-outline" id="btnExportCSV">
+          <iconify-icon icon="mdi:file-delimited-outline" width="18"></iconify-icon> CSV
+        </button>
+        <button class="btn btn-outline" id="btnExportPDF">
+          <iconify-icon icon="mdi:file-pdf-box" width="18"></iconify-icon> PDF
+        </button>
+      </div>
+    </div>
+
+    <div class="charts-grid three-cols">
+      <div class="chart-card span-2">
+        <div class="chart-header"><h3>Movimentação Mensal</h3></div>
+        <div class="chart-wrapper">
+          <canvas id="chartMensal"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-header"><h3>Receitas por Categoria</h3></div>
+        <div class="chart-wrapper">
+          <canvas id="chartReceitasCategoria"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Category breakdown table -->
+    <div class="grid-2">
+      <div class="card">
+        <h3 class="section-title">Gastos por Categoria</h3>
+        <div id="tabelaGastosCategoria"></div>
+      </div>
+      <div class="card">
+        <h3 class="section-title">Receitas por Categoria</h3>
+        <div id="tabelaReceitasCategoria"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ PAGE: METAS ══════ -->
+  <section class="page" id="page-metas">
+    <div class="page-header">
+      <h1>Metas Financeiras</h1>
+      <button class="btn btn-primary" id="btnNovaMeta">
+        <iconify-icon icon="mdi:plus" width="18"></iconify-icon> Nova Meta
+      </button>
+    </div>
+
+    <div class="card mb-2">
+      <h3 class="section-title">Meta de Economia Mensal</h3>
+      <div class="meta-economia">
+        <div class="meta-eco-info">
+          <div>
+            <span class="meta-label">Meta definida</span>
+            <span class="meta-value" id="metaEconomiaDef">R$ 0,00</span>
+          </div>
+          <div>
+            <span class="meta-label">Economizado</span>
+            <span class="meta-value" id="metaEconomizado">R$ 0,00</span>
+          </div>
+          <div>
+            <span class="meta-label">Percentual</span>
+            <span class="meta-value" id="metaPercent">0%</span>
+          </div>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar" id="progressEconomia"></div>
+        </div>
+        <button class="btn btn-outline btn-sm mt-1" id="btnEditarMetaEco">
+          <iconify-icon icon="mdi:pencil" width="16"></iconify-icon> Editar meta mensal
+        </button>
+      </div>
+    </div>
+
+    <div class="metas-grid" id="metasGrid">
+      <div class="empty-state card">
+        <iconify-icon icon="mdi:target" width="48"></iconify-icon>
+        <p>Nenhuma meta cadastrada ainda.<br>Crie uma meta para acompanhar seus objetivos.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ PAGE: CONTAS A PAGAR ══════ -->
+  <section class="page" id="page-contas">
+    <div class="page-header">
+      <h1>Contas a Pagar</h1>
+    </div>
+
+    <div class="contas-sections">
+      <div class="card contas-section danger">
+        <h3><iconify-icon icon="mdi:alert-circle-outline" width="20"></iconify-icon> Vencidas</h3>
+        <div id="contasVencidas"><p class="empty-msg">Nenhuma conta vencida 🎉</p></div>
+      </div>
+      <div class="card contas-section warning">
+        <h3><iconify-icon icon="mdi:clock-alert-outline" width="20"></iconify-icon> Próximas do vencimento (7 dias)</h3>
+        <div id="contasProximas"><p class="empty-msg">Nenhuma conta próxima do vencimento</p></div>
+      </div>
+      <div class="card contas-section success">
+        <h3><iconify-icon icon="mdi:check-circle-outline" width="20"></iconify-icon> Pagas</h3>
+        <div id="contasPagas"><p class="empty-msg">Nenhuma conta paga este mês</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ PAGE: CONFIGURAÇÕES ══════ -->
+  <section class="page" id="page-configuracoes">
+    <div class="page-header">
+      <h1>Configurações</h1>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3 class="section-title">Categorias</h3>
+        <div class="categorias-list" id="categoriasList"></div>
+        <div class="add-categoria-form mt-1">
+          <input type="text" class="input" id="novaCategoria" placeholder="Nome da nova categoria">
+          <button class="btn btn-primary" id="btnAddCategoria">
+            <iconify-icon icon="mdi:plus" width="18"></iconify-icon> Adicionar
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 class="section-title">Dados e Backup</h3>
+        <div class="config-actions">
+          <button class="btn btn-outline full-w" id="btnExportBackup">
+            <iconify-icon icon="mdi:download" width="18"></iconify-icon> Exportar backup (JSON)
+          </button>
+          <label class="btn btn-outline full-w" for="importBackup">
+            <iconify-icon icon="mdi:upload" width="18"></iconify-icon> Importar backup (JSON)
+          </label>
+          <input type="file" id="importBackup" accept=".json" hidden>
+          <button class="btn btn-danger-outline full-w" id="btnLimparDados">
+            <iconify-icon icon="mdi:trash-can-outline" width="18"></iconify-icon> Limpar todos os dados
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ═══════════════════ MODAL: RECEITA ═══════════════════ -->
+<div class="modal-overlay" id="modalReceita">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalReceitaTitulo">Nova Receita</h2>
+      <button class="modal-close" data-close="modalReceita"><iconify-icon icon="mdi:close" width="20"></iconify-icon></button>
+    </div>
+    <form id="formReceita" novalidate>
+      <input type="hidden" id="receitaId">
+      <div class="form-group">
+        <label class="form-label">Descrição *</label>
+        <input type="text" class="input" id="receitaDescricao" placeholder="Ex: Salário, Freelance..." required>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Valor (R$) *</label>
+          <input type="number" class="input" id="receitaValor" placeholder="0,00" step="0.01" min="0.01" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data *</label>
+          <input type="date" class="input" id="receitaData" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Categoria *</label>
+        <select class="input" id="receitaCategoria" required>
+          <option value="">Selecione...</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" data-close="modalReceita">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════ MODAL: DESPESA ═══════════════════ -->
+<div class="modal-overlay" id="modalDespesa">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalDespesaTitulo">Nova Despesa</h2>
+      <button class="modal-close" data-close="modalDespesa"><iconify-icon icon="mdi:close" width="20"></iconify-icon></button>
+    </div>
+    <form id="formDespesa" novalidate>
+      <input type="hidden" id="despesaId">
+      <div class="form-group">
+        <label class="form-label">Descrição *</label>
+        <input type="text" class="input" id="despesaDescricao" placeholder="Ex: Aluguel, Supermercado..." required>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Valor (R$) *</label>
+          <input type="number" class="input" id="despesaValor" placeholder="0,00" step="0.01" min="0.01" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data *</label>
+          <input type="date" class="input" id="despesaData" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Categoria *</label>
+        <select class="input" id="despesaCategoria" required>
+          <option value="">Selecione...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <div class="radio-group">
+          <label class="radio-label">
+            <input type="radio" name="despesaStatus" value="pago"> <span>Pago</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="despesaStatus" value="pendente" checked> <span>Pendente</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" data-close="modalDespesa">Cancelar</button>
+        <button type="submit" class="btn btn-danger">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════ MODAL: META ═══════════════════ -->
+<div class="modal-overlay" id="modalMeta">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalMetaTitulo">Nova Meta</h2>
+      <button class="modal-close" data-close="modalMeta"><iconify-icon icon="mdi:close" width="20"></iconify-icon></button>
+    </div>
+    <form id="formMeta" novalidate>
+      <input type="hidden" id="metaId">
+      <div class="form-group">
+        <label class="form-label">Nome da Meta *</label>
+        <input type="text" class="input" id="metaNome" placeholder="Ex: Viagem, Reserva de emergência..." required>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Valor Alvo (R$) *</label>
+          <input type="number" class="input" id="metaAlvo" placeholder="0,00" step="0.01" min="0.01" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Valor Atual (R$)</label>
+          <input type="number" class="input" id="metaAtual" placeholder="0,00" step="0.01" min="0" value="0">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prazo</label>
+        <input type="date" class="input" id="metaPrazo">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" data-close="modalMeta">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════ MODAL: META ECONOMIA ═══════════════════ -->
+<div class="modal-overlay" id="modalMetaEco">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2>Meta de Economia Mensal</h2>
+      <button class="modal-close" data-close="modalMetaEco"><iconify-icon icon="mdi:close" width="20"></iconify-icon></button>
+    </div>
+    <form id="formMetaEco" novalidate>
+      <div class="form-group">
+        <label class="form-label">Valor da Meta (R$) *</label>
+        <input type="number" class="input" id="metaEcoValor" placeholder="0,00" step="0.01" min="0" required>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" data-close="modalMetaEco">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════ MODAL: CONFIRMAR DELETE ═══════════════════ -->
+<div class="modal-overlay" id="modalConfirm">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2>Confirmar exclusão</h2>
+      <button class="modal-close" data-close="modalConfirm"><iconify-icon icon="mdi:close" width="20"></iconify-icon></button>
+    </div>
+    <p class="confirm-msg">Tem certeza que deseja excluir este registro? Esta ação não pode ser desfeita.</p>
+    <div class="modal-footer">
+      <button class="btn btn-outline" data-close="modalConfirm">Cancelar</button>
+      <button class="btn btn-danger" id="btnConfirmDelete">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ TOASTS ═══════════════════ -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ═══ TELA DE LOGIN ═══ -->
+<div class="login-overlay" id="loginOverlay">
+  <!-- Partículas decorativas -->
+  <div class="login-particles">
+    <span></span><span></span><span></span><span></span>
+    <span></span><span></span><span></span><span></span>
+  </div>
+
+  <div class="login-card">
+    <!-- Logo -->
+    <div class="login-logo-wrap">
+      <div class="login-logo-icon">
+        <iconify-icon icon="mdi:chart-line" width="32"></iconify-icon>
+      </div>
+      <div class="login-logo-text">
+        <span class="login-app-name">TrackMoney</span>
+        <span class="login-app-by">by Gabriel H. Gomes</span>
+      </div>
+    </div>
+
+    <div class="login-divider"></div>
+
+    <h2 class="login-title">Bem-vindo de volta 👋</h2>
+    <p class="login-subtitle">Gerencie suas finanças com inteligência. Entre com sua conta Google para continuar.</p>
+
+    <!-- Features rápidas -->
+    <div class="login-features">
+      <div class="login-feature">
+        <iconify-icon icon="mdi:shield-check-outline" width="18"></iconify-icon>
+        <span>100% seguro</span>
+      </div>
+      <div class="login-feature">
+        <iconify-icon icon="mdi:cloud-sync-outline" width="18"></iconify-icon>
+        <span>Sincronizado na nuvem</span>
+      </div>
+      <div class="login-feature">
+        <iconify-icon icon="mdi:devices" width="18"></iconify-icon>
+        <span>Todos os dispositivos</span>
+      </div>
+    </div>
+
+    <button class="btn-google" id="btnLoginGoogle">
+      <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Entrar com Google
+    </button>
+
+    <div class="login-error" id="loginError"></div>
+    <div class="login-loading" id="loginLoading" style="display:none">
+      <div class="spinner"></div>
+      <span>Carregando seus dados...</span>
+    </div>
+
+    <p class="login-terms">Ao entrar, você concorda com o uso seguro dos seus dados financeiros apenas por você.</p>
+  </div>
+</div>
+
+<!-- ═══ PERFIL (inserido na topbar via JS) ═══ -->
+<div class="profile-btn-wrap" id="userChip" style="display:none">
+  <button class="profile-btn" id="profileBtn">
+    <img id="userAvatar" src="" alt="" width="32" height="32">
+    <span id="userName"></span>
+    <iconify-icon icon="mdi:chevron-down" width="16" id="profileChevron"></iconify-icon>
+  </button>
+
+  <!-- Dropdown -->
+  <div class="profile-dropdown" id="profileDropdown">
+    <div class="profile-dropdown-header">
+      <img id="profileAvatarBig" src="" alt="" width="52" height="52">
+      <div>
+        <div class="profile-name" id="profileName">—</div>
+        <div class="profile-email" id="profileEmail">—</div>
+      </div>
+    </div>
+    <div class="profile-dropdown-divider"></div>
+    <button class="profile-dropdown-item" id="btnEditName">
+      <iconify-icon icon="mdi:pencil-outline" width="18"></iconify-icon> Alterar nome de exibição
+    </button>
+    <button class="profile-dropdown-item" id="btnChangePhoto">
+      <iconify-icon icon="mdi:camera-outline" width="18"></iconify-icon> Trocar foto de perfil
+    </button>
+    <div class="profile-dropdown-divider"></div>
+    <button class="profile-dropdown-item danger" id="btnLogout">
+      <iconify-icon icon="mdi:logout" width="18"></iconify-icon> Sair da conta
+    </button>
+  </div>
+</div>
+
+<!-- Modal: Editar nome -->
+<div class="modal-overlay" id="modalEditName">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2>Alterar nome</h2>
+      <button class="modal-close" data-close="modalEditName"><iconify-icon icon="mdi:close" width="20"></iconify-icon></button>
+    </div>
+    <form id="formEditName" style="padding:0 24px" novalidate>
+      <div class="form-group">
+        <label class="form-label">Nome de exibição</label>
+        <input type="text" class="input" id="inputEditName" placeholder="Seu nome" required>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" data-close="modalEditName">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Input oculto para foto -->
+<input type="file" id="inputChangePhoto" accept="image/*" hidden>
+
+<!-- ═══ FIREBASE CONFIG ═══ -->
+<script>
+  const firebaseConfig = {
+    apiKey:            "AIzaSyBTEOAAFh9h0L7mapdz3QersBwV2wwbvfw",
+    authDomain:        "trackmoney-b7bd6.firebaseapp.com",
+    projectId:         "trackmoney-b7bd6",
+    storageBucket:     "trackmoney-b7bd6.firebasestorage.app",
+    messagingSenderId: "732525552136",
+    appId:             "1:732525552136:web:3d9b05bbfec2bfbe7267bd"
+  };
+  firebase.initializeApp(firebaseConfig);
+</script>
+<script src="script.js"></script>
+</body>
+</html>
