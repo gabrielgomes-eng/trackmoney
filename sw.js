@@ -2,10 +2,10 @@
    TrackMoney — Service Worker (PWA)
    ═══════════════════════════════════════ */
 
-const CACHE_NAME = 'trackmoney-v1';
+const CACHE_NAME = 'trackmoney-v2';
 
-// Arquivos para cache offline
-const ASSETS = [
+// Arquivos locais do app
+const LOCAL_ASSETS = [
   '/',
   '/index.html',
   '/style.css',
@@ -15,11 +15,31 @@ const ASSETS = [
   '/icon-512.png'
 ];
 
-// Instala e faz cache dos assets
+// Bibliotecas externas (CDN) — necessárias pro app funcionar mesmo offline
+// depois do primeiro carregamento (Chart.js, jsPDF, ícones).
+// OBS: Firebase SDK (gstatic) não entra aqui de propósito, pois autenticação
+// e Firestore exigem conexão de qualquer forma.
+const CDN_ASSETS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  'https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js'
+];
+
+// Instala e faz cache dos assets (locais + CDN)
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(ASSETS);
+    caches.open(CACHE_NAME).then(async cache => {
+      // Assets locais (mesma origem) — cache.addAll funciona normalmente
+      await cache.addAll(LOCAL_ASSETS);
+
+      // Assets de CDN (origem cruzada) — precisa request individual em modo no-cors
+      await Promise.all(
+        CDN_ASSETS.map(url =>
+          fetch(url, { mode: 'no-cors' })
+            .then(response => cache.put(url, response))
+            .catch(() => null) // se falhar (ex: sem internet no install), ignora
+        )
+      );
     })
   );
   self.skipWaiting();

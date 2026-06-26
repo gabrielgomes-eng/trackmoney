@@ -837,14 +837,66 @@ function sortItems(items,field,asc){
 function validateForm(formId){
   const form=document.getElementById(formId);
   let valid=true;
+
   form.querySelectorAll('.input.error').forEach(el=>el.classList.remove('error'));
   form.querySelectorAll('.field-error').forEach(el=>el.remove());
+
+  function addError(el, msg){
+    el.classList.add('error');
+    if(!el.parentNode.querySelector('.field-error')){
+      const err=document.createElement('span');
+      err.className='field-error';
+      err.textContent=msg;
+      el.parentNode.appendChild(err);
+    }
+    valid=false;
+  }
+
+  // Campos obrigatórios em geral (select, texto, data)
   form.querySelectorAll('[required]').forEach(el=>{
-    if(!el.value.trim()){el.classList.add('error');const err=document.createElement('span');err.className='field-error';err.textContent='Campo obrigatório';el.parentNode.appendChild(err);valid=false;}
+    if(el.type==='number') return; // número tratado separadamente abaixo
+    if(!el.value || !el.value.trim()){
+      addError(el, 'Campo obrigatório');
+    }
   });
-  form.querySelectorAll('input[type="number"][min="0.01"]').forEach(el=>{
-    if(el.value&&parseFloat(el.value)<=0){el.classList.add('error');const err=document.createElement('span');err.className='field-error';err.textContent='Valor deve ser maior que zero';if(!el.parentNode.querySelector('.field-error'))el.parentNode.appendChild(err);valid=false;}
+
+  // Campos de descrição: mínimo de 2 caracteres com conteúdo real
+  form.querySelectorAll('input[id$="Descricao"], input#metaNome').forEach(el=>{
+    const val = el.value.trim();
+    if(val && val.length < 2){
+      addError(el, 'Descrição muito curta (mínimo 2 caracteres)');
+    }
   });
+
+  // Campos numéricos (valor): precisa ser número válido e maior que o mínimo definido
+  form.querySelectorAll('input[type="number"]').forEach(el=>{
+    if(!el.value && !el.required) return; // opcional e vazio, ok
+    const num = parseFloat(el.value);
+    const min = el.hasAttribute('min') ? parseFloat(el.min) : null;
+
+    if(el.required && el.value.trim()===''){
+      addError(el, 'Campo obrigatório');
+    } else if(el.value !== '' && isNaN(num)){
+      addError(el, 'Informe um número válido');
+    } else if(min !== null && !isNaN(num) && num < min){
+      addError(el, min > 0 ? 'Valor deve ser maior que zero' : `Valor mínimo é ${min}`);
+    } else if(!isNaN(num) && num > 999999999){
+      addError(el, 'Valor muito alto');
+    }
+  });
+
+  // Campos de data: verifica se é uma data real e dentro de um intervalo razoável
+  form.querySelectorAll('input[type="date"]').forEach(el=>{
+    if(!el.value) return; // se obrigatório, já caiu no check de required acima
+    const d = new Date(el.value + 'T12:00:00');
+    const anoMin = 2000, anoMax = new Date().getFullYear() + 10;
+    if(isNaN(d.getTime())){
+      addError(el, 'Data inválida');
+    } else if(d.getFullYear() < anoMin || d.getFullYear() > anoMax){
+      addError(el, `Informe uma data entre ${anoMin} e ${anoMax}`);
+    }
+  });
+
   return valid;
 }
 
