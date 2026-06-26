@@ -967,25 +967,25 @@ async function requestNotificationPermission() {
 
 async function installPWA() {
   if (!deferredInstallPrompt) {
-    toast('App já está instalado ou não é suportado neste browser', 'info');
+    // App já instalado — só pede notificação
+    await requestNotificationPermission();
     return;
   }
 
-  // Mostra prompt de instalação
+  // Mostra prompt de instalação nativo
   deferredInstallPrompt.prompt();
 
   const { outcome } = await deferredInstallPrompt.userChoice;
 
-  if (outcome === 'accepted') {
-    // Após aceitar instalar, pede permissão de notificação
-    setTimeout(async () => {
-      await requestNotificationPermission();
-    }, 1500);
-  }
-
   deferredInstallPrompt = null;
   const btn = document.getElementById('btnInstall');
   if (btn) btn.style.display = 'none';
+
+  // Pede notificação independente do resultado (accepted ou dismissed)
+  // pois no Android o appinstalled pode não disparar
+  setTimeout(async () => {
+    await requestNotificationPermission();
+  }, 800);
 }
 
 window.editReceita     = editReceita;
