@@ -1779,7 +1779,7 @@ body {
   }
 
   /* Topbar compacta */
-  .topbar { height: 54px; padding: 0 12px; gap: 8px; }
+  .topbar { padding: 10px 12px; gap: 8px; height: auto; }
   .topbar-title { font-size: .88rem; }
   #currentMonthLabel { font-size: .75rem; white-space: nowrap; }
 
