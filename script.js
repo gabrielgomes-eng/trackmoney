@@ -457,11 +457,8 @@ function updateMonthLabel() {
 function renderDashboard() {
   const rec  = filterByMonth(STATE.receitas);
   const desp = filterByMonth(STATE.despesas);
-
-  // Inclui recorrentes nos totais
-  const recorrentesDoMes = STATE.recorrentes.map(r => recorrenteParaItem(r, STATE.currentMonth, STATE.currentYear));
-  const totalRec  = rec.reduce((a,r)=>a+r.valor,0) + recorrentesDoMes.filter(r=>r.tipo==='receita').reduce((a,r)=>a+r.valor,0);
-  const totalDesp = desp.reduce((a,d)=>a+d.valor,0) + recorrentesDoMes.filter(r=>r.tipo==='despesa').reduce((a,r)=>a+r.valor,0);
+  const totalRec  = rec.reduce((a,r)=>a+r.valor,0);
+  const totalDesp = desp.reduce((a,d)=>a+d.valor,0);
   const economiaMes = totalRec - totalDesp;
 
   // Saldo Atual = saldo acumulado de TODOS os lançamentos (não só do mês selecionado)
@@ -476,7 +473,7 @@ function renderDashboard() {
   document.getElementById('saldoAtual').style.color = saldoGeral < 0 ? 'var(--danger)' : saldoGeral === 0 ? 'var(--text-primary)' : 'var(--accent)';
 
   renderChartDashboard();
-  renderRecentTransactions([...rec, ...desp, ...recorrentesDoMes]);
+  renderRecentTransactions([...rec, ...desp]);
   updateContasBadge();
 }
 
@@ -610,15 +607,10 @@ function renderLancamentos() {
   const cat    = document.getElementById('filtroCategoriaLancamento')?.value || '';
   const status = document.getElementById('filtroStatusLancamento')?.value || '';
 
-  // Inclui recorrentes como itens virtuais do mês atual (sem criar nada no Firestore)
-  const recorrentesDoMes = STATE.recorrentes.map(rec =>
-    recorrenteParaItem(rec, STATE.currentMonth, STATE.currentYear)
-  );
-
-  // Junta receitas, despesas e recorrentes num único array
+  // Junta receitas e despesas num único array, marcando o tipo de cada item
   const receitasComTipo = filterByMonth(STATE.receitas).map(r => ({ ...r, tipo: 'receita' }));
   const despesasComTipo = filterByMonth(STATE.despesas).map(d => ({ ...d, tipo: 'despesa' }));
-  let items = [...receitasComTipo, ...despesasComTipo, ...recorrentesDoMes].filter(item =>
+  let items = [...receitasComTipo, ...despesasComTipo].filter(item =>
     (!search || item.descricao.toLowerCase().includes(search)) &&
     (!tipo || item.tipo === tipo) &&
     (!cat || item.categoria === cat) &&
@@ -706,21 +698,11 @@ function openLancamentoModal(item = null, tipoForced = null) {
     if (tipo === 'despesa') {
       document.querySelector(`input[name="lancStatus"][value="${item.status || STATUS_PENDENTE}"]`).checked = true;
     }
-    
-    // CORREÇÃO 2: BLOQUEIA a troca de tipo na edição
-    document.getElementById('btnTipoEntrada').style.pointerEvents = 'none';
-    document.getElementById('btnTipoSaida').style.pointerEvents = 'none';
-    document.getElementById('btnTipoEntrada').style.opacity = '0.5';
-    document.getElementById('btnTipoSaida').style.opacity = '0.5';
+    // Lançamentos já gerados (instâncias) não editam a recorrência em si —
+    // isso é feito na tela de Configurações, na lista de recorrentes.
   } else {
     document.getElementById('modalLancamentoTitulo').textContent = 'Novo Lançamento';
     document.querySelector('input[name="lancStatus"][value="pendente"]').checked = true;
-    
-    // CORREÇÃO 2: LIBERA a troca de tipo para novos lançamentos
-    document.getElementById('btnTipoEntrada').style.pointerEvents = 'auto';
-    document.getElementById('btnTipoSaida').style.pointerEvents = 'auto';
-    document.getElementById('btnTipoEntrada').style.opacity = '1';
-    document.getElementById('btnTipoSaida').style.opacity = '1';
   }
 
   openModal('modalLancamento');
@@ -729,16 +711,9 @@ function openLancamentoModal(item = null, tipoForced = null) {
 function editReceita(id){const r=STATE.receitas.find(r=>r.id===id);if(r)openLancamentoModal(r,'receita');}
 function editDespesa(id){const d=STATE.despesas.find(d=>d.id===id);if(d)openLancamentoModal(d,'despesa');}
 
-let isSaving = false; // CORREÇÃO 1: Trava de segurança global para o formulário
-
 async function saveLancamento(e) {
   e.preventDefault();
-  
-  // CORREÇÃO 1: Se já estiver salvando, ignora novos cliques
-  if (isSaving) return; 
   if (!validateForm('formLancamento')) return;
-  
-  isSaving = true;
 
   const tipo = document.getElementById('formLancamento').dataset.tipo || 'receita';
   const id = document.getElementById('lancId').value;
@@ -762,7 +737,7 @@ async function saveLancamento(e) {
       return;
     }
 
-    // Novo lançamento recorrente: salva apenas o modelo, aparece automaticamente todo mês
+    // Novo lançamento marcado como recorrente: cria o "modelo" + a primeira ocorrência
     if (isRecorrente) {
       const diaMes = parseInt(document.getElementById('lancDiaMes').value, 10);
       if (!diaMes || diaMes < 1 || diaMes > 31) {
@@ -770,12 +745,19 @@ async function saveLancamento(e) {
         return;
       }
       const lembrete = document.getElementById('lancLembrete').checked;
+
       const recorrenteData = {
         id: genId(),
         tipo, descricao, valor, categoria, diaMes, lembrete,
-        criadoEm: today()
+        criadoEm: today(),
+        ultimoMesGerado: null // controla quais meses já foram gerados (evita duplicar)
       };
       await fbAdd('recorrentes', recorrenteData);
+      // Não fazemos push manual em STATE.recorrentes nem chamamos a geração aqui:
+      // o listener de 'recorrentes' (onSnapshot) já vai disparar a geração da
+      // primeira ocorrência automaticamente, e o ID determinístico evita duplicatas
+      // mesmo que esse processo rode mais de uma vez.
+
       toast(tipo === 'receita' ? 'Entrada recorrente cadastrada!' : 'Conta recorrente cadastrada!');
       closeModal('modalLancamento');
       return;
@@ -790,9 +772,6 @@ async function saveLancamento(e) {
 
   } catch (err) {
     toast('Erro ao salvar: ' + err.message, 'error');
-  } finally {
-    // CORREÇÃO 1: Libera o botão no final, quer tenha dado erro ou sucesso
-    isSaving = false;
   }
 }
 
@@ -864,11 +843,7 @@ function updateContasBadge(){
 }
 
 function renderContas(){
-  // Inclui recorrentes de despesa como pendentes
-  const recorrentesDesp = STATE.recorrentes
-    .filter(r => r.tipo === 'despesa')
-    .map(r => recorrenteParaItem(r, STATE.currentMonth, STATE.currentYear));
-  const pendentes=[...STATE.despesas.filter(d=>d.status===STATUS_PENDENTE), ...recorrentesDesp];
+  const pendentes=STATE.despesas.filter(d=>d.status===STATUS_PENDENTE);
   const pagas=filterByMonth(STATE.despesas).filter(d=>d.status===STATUS_PAGO);
   const hoje=new Date();hoje.setHours(0,0,0,0);
   const em7=new Date(hoje);em7.setDate(hoje.getDate()+7);
@@ -923,7 +898,6 @@ async function deleteRecorrente(id) {
   if (!confirm('Cancelar essa recorrência? Os lançamentos já criados não serão apagados, só vai parar de gerar novos.')) return;
   try {
     await fbDelete('recorrentes', id);
-    // Não precisa deletar lançamentos filhos — recorrentes não criam mais cópias
     toast('Recorrência cancelada.');
   } catch(err) { toast('Erro: ' + err.message, 'error'); }
 }
@@ -941,10 +915,14 @@ function diaValidoNoMes(ano, mesIndex, dia) {
 // Cria a ocorrência (lançamento real) de uma recorrência para um mês específico
 async function criarOcorrenciaRecorrente(rec, ano, mesIndex) {
   const dia = diaValidoNoMes(ano, mesIndex, rec.diaMes);
-  const dataStr = `${ano}-${String(mesIndex + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+  const monthKey = `${ano}-${String(mesIndex + 1).padStart(2, '0')}`;
+  const dataStr = `${monthKey}-${String(dia).padStart(2, '0')}`;
   const colName = rec.tipo === 'receita' ? 'receitas' : 'despesas';
   const data = {
-    id: genId(),
+    // ID determinístico (não aleatório): garante que, mesmo se essa função rodar
+    // mais de uma vez "ao mesmo tempo" (condição de corrida), o resultado é o
+    // mesmo documento sendo sobrescrito — nunca duplicado.
+    id: `${rec.id}_${monthKey}`,
     descricao: rec.descricao,
     valor: rec.valor,
     data: dataStr,
@@ -955,62 +933,36 @@ async function criarOcorrenciaRecorrente(rec, ano, mesIndex) {
   await fbAdd(colName, data);
 }
 
-// Gera APENAS o mês atual — verifica no Firestore se já existe antes de criar
-async function gerarMesAtualRecorrente(rec) {
+// Gera todas as ocorrências que faltam (desde a criação da recorrência até o mês atual real)
+async function gerarOcorrenciasFaltantes(rec) {
   const agora = new Date();
-  const anoAtual = agora.getFullYear();
-  const mesAtual = agora.getMonth();
-  const monthKey = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}`;
-
-  // Só gera se a data de início do recorrente já chegou
   const inicio = new Date(rec.criadoEm + 'T12:00:00');
-  if (anoAtual < inicio.getFullYear()) return;
-  if (anoAtual === inicio.getFullYear() && mesAtual < inicio.getMonth()) return;
+  let ano = inicio.getFullYear();
+  let mes = inicio.getMonth();
+  const anoFim = agora.getFullYear();
+  const mesFim = agora.getMonth();
 
-  const colName = rec.tipo === 'receita' ? 'receitas' : 'despesas';
-  const dia = diaValidoNoMes(anoAtual, mesAtual, rec.diaMes);
-  const dataStr = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
-
-  try {
-    // PASSO 1: Verifica no Firestore se já existe lançamento desse recorrente nesse mês
-    // Isso resolve o problema de recorrentes antigos sem mesesGerados E evita duplicatas
-    const existing = await col(colName)
-      .where('origemRecorrenteId', '==', rec.id)
-      .where('data', '==', dataStr)
-      .get();
-
-    if (!existing.empty) return; // já existe, não cria
-
-    // PASSO 2: Usa transaction para marcar o mês atomicamente
-    const recRef = col('recorrentes').doc(rec.id);
-    let devecriar = false;
-
-    await db.runTransaction(async (transaction) => {
-      const recSnap = await transaction.get(recRef);
-      if (!recSnap.exists) return;
-      const mesesGerados = recSnap.data().mesesGerados || [];
-      if (mesesGerados.includes(monthKey)) return;
-      transaction.update(recRef, { mesesGerados: [...mesesGerados, monthKey] });
-      devecriar = true;
-    });
-
-    // PASSO 3: Só cria se a transaction marcou com sucesso
-    if (devecriar) {
-      await criarOcorrenciaRecorrente(rec, anoAtual, mesAtual);
+  let seguranca = 0; // limite de iterações, evita loop infinito em caso de dado corrompido
+  while ((ano < anoFim || (ano === anoFim && mes <= mesFim)) && seguranca < 36) {
+    const monthKey = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+    const arr = rec.tipo === 'receita' ? STATE.receitas : STATE.despesas;
+    const jaExiste = arr.some(item => item.origemRecorrenteId === rec.id && item.data && item.data.slice(0, 7) === monthKey);
+    if (!jaExiste) {
+      await criarOcorrenciaRecorrente(rec, ano, mes);
     }
-
-  } catch(err) {
-    console.warn('Erro ao gerar recorrente:', err);
+    seguranca++;
+    mes++;
+    if (mes > 11) { mes = 0; ano++; }
   }
 }
 
-// Roda em todas as recorrências — apenas gera o mês atual se ainda não gerou
+// Roda em todas as recorrências cadastradas — usado ao carregar o app
 async function processarTodasRecorrencias() {
-  if (STATE._processandoRecorrencias) return;
+  if (STATE._processandoRecorrencias) return; // evita execuções concorrentes
   STATE._processandoRecorrencias = true;
   try {
     for (const rec of STATE.recorrentes) {
-      await gerarMesAtualRecorrente(rec);
+      await gerarOcorrenciasFaltantes(rec);
     }
   } catch (err) {
     console.error('Erro ao processar recorrências:', err);
