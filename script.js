@@ -457,8 +457,11 @@ function updateMonthLabel() {
 function renderDashboard() {
   const rec  = filterByMonth(STATE.receitas);
   const desp = filterByMonth(STATE.despesas);
-  const totalRec  = rec.reduce((a,r)=>a+r.valor,0);
-  const totalDesp = desp.reduce((a,d)=>a+d.valor,0);
+
+  // Inclui recorrentes nos totais
+  const recorrentesDoMes = STATE.recorrentes.map(r => recorrenteParaItem(r, STATE.currentMonth, STATE.currentYear));
+  const totalRec  = rec.reduce((a,r)=>a+r.valor,0) + recorrentesDoMes.filter(r=>r.tipo==='receita').reduce((a,r)=>a+r.valor,0);
+  const totalDesp = desp.reduce((a,d)=>a+d.valor,0) + recorrentesDoMes.filter(r=>r.tipo==='despesa').reduce((a,r)=>a+r.valor,0);
   const economiaMes = totalRec - totalDesp;
 
   // Saldo Atual = saldo acumulado de TODOS os lançamentos (não só do mês selecionado)
@@ -473,7 +476,7 @@ function renderDashboard() {
   document.getElementById('saldoAtual').style.color = saldoGeral < 0 ? 'var(--danger)' : saldoGeral === 0 ? 'var(--text-primary)' : 'var(--accent)';
 
   renderChartDashboard();
-  renderRecentTransactions([...rec, ...desp]);
+  renderRecentTransactions([...rec, ...desp, ...recorrentesDoMes]);
   updateContasBadge();
 }
 
@@ -607,10 +610,15 @@ function renderLancamentos() {
   const cat    = document.getElementById('filtroCategoriaLancamento')?.value || '';
   const status = document.getElementById('filtroStatusLancamento')?.value || '';
 
-  // Junta receitas e despesas num único array, marcando o tipo de cada item
+  // Inclui recorrentes como itens virtuais do mês atual (sem criar nada no Firestore)
+  const recorrentesDoMes = STATE.recorrentes.map(rec =>
+    recorrenteParaItem(rec, STATE.currentMonth, STATE.currentYear)
+  );
+
+  // Junta receitas, despesas e recorrentes num único array
   const receitasComTipo = filterByMonth(STATE.receitas).map(r => ({ ...r, tipo: 'receita' }));
   const despesasComTipo = filterByMonth(STATE.despesas).map(d => ({ ...d, tipo: 'despesa' }));
-  let items = [...receitasComTipo, ...despesasComTipo].filter(item =>
+  let items = [...receitasComTipo, ...despesasComTipo, ...recorrentesDoMes].filter(item =>
     (!search || item.descricao.toLowerCase().includes(search)) &&
     (!tipo || item.tipo === tipo) &&
     (!cat || item.categoria === cat) &&
@@ -754,7 +762,7 @@ async function saveLancamento(e) {
       return;
     }
 
-    // Novo lançamento marcado como recorrente: cria o "modelo" + a primeira ocorrência
+    // Novo lançamento recorrente: salva apenas o modelo, aparece automaticamente todo mês
     if (isRecorrente) {
       const diaMes = parseInt(document.getElementById('lancDiaMes').value, 10);
       if (!diaMes || diaMes < 1 || diaMes > 31) {
@@ -762,17 +770,12 @@ async function saveLancamento(e) {
         return;
       }
       const lembrete = document.getElementById('lancLembrete').checked;
-
       const recorrenteData = {
         id: genId(),
         tipo, descricao, valor, categoria, diaMes, lembrete,
-        criadoEm: today(),
-        ultimoMesGerado: null // controla quais meses já foram gerados (evita duplicar)
+        criadoEm: today()
       };
-      
-      // CORREÇÃO 3: Apenas adiciona no banco. O onSnapshot vai ouvir isso e chamar o processar.
       await fbAdd('recorrentes', recorrenteData);
-
       toast(tipo === 'receita' ? 'Entrada recorrente cadastrada!' : 'Conta recorrente cadastrada!');
       closeModal('modalLancamento');
       return;
@@ -861,7 +864,11 @@ function updateContasBadge(){
 }
 
 function renderContas(){
-  const pendentes=STATE.despesas.filter(d=>d.status===STATUS_PENDENTE);
+  // Inclui recorrentes de despesa como pendentes
+  const recorrentesDesp = STATE.recorrentes
+    .filter(r => r.tipo === 'despesa')
+    .map(r => recorrenteParaItem(r, STATE.currentMonth, STATE.currentYear));
+  const pendentes=[...STATE.despesas.filter(d=>d.status===STATUS_PENDENTE), ...recorrentesDesp];
   const pagas=filterByMonth(STATE.despesas).filter(d=>d.status===STATUS_PAGO);
   const hoje=new Date();hoje.setHours(0,0,0,0);
   const em7=new Date(hoje);em7.setDate(hoje.getDate()+7);
@@ -916,6 +923,7 @@ async function deleteRecorrente(id) {
   if (!confirm('Cancelar essa recorrência? Os lançamentos já criados não serão apagados, só vai parar de gerar novos.')) return;
   try {
     await fbDelete('recorrentes', id);
+    // Não precisa deletar lançamentos filhos — recorrentes não criam mais cópias
     toast('Recorrência cancelada.');
   } catch(err) { toast('Erro: ' + err.message, 'error'); }
 }
