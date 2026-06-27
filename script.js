@@ -935,14 +935,27 @@ async function gerarOcorrenciasFaltantes(rec) {
   let mes = inicio.getMonth();
   const anoFim = agora.getFullYear();
   const mesFim = agora.getMonth();
+  const colName = rec.tipo === 'receita' ? 'receitas' : 'despesas';
 
-  let seguranca = 0; // limite de iterações, evita loop infinito em caso de dado corrompido
+  // Busca diretamente no Firestore as ocorrências já existentes para esse recorrente
+  // Isso evita o problema de race condition com o STATE ainda desatualizado
+  let existentes = new Set();
+  try {
+    const snap = await col(colName)
+      .where('origemRecorrenteId', '==', rec.id)
+      .get();
+    snap.docs.forEach(d => {
+      const data = d.data().data;
+      if (data) existentes.add(data.slice(0, 7)); // "YYYY-MM"
+    });
+  } catch(e) { console.warn('Erro ao buscar existentes:', e); }
+
+  let seguranca = 0;
   while ((ano < anoFim || (ano === anoFim && mes <= mesFim)) && seguranca < 36) {
     const monthKey = `${ano}-${String(mes + 1).padStart(2, '0')}`;
-    const arr = rec.tipo === 'receita' ? STATE.receitas : STATE.despesas;
-    const jaExiste = arr.some(item => item.origemRecorrenteId === rec.id && item.data && item.data.slice(0, 7) === monthKey);
-    if (!jaExiste) {
+    if (!existentes.has(monthKey)) {
       await criarOcorrenciaRecorrente(rec, ano, mes);
+      existentes.add(monthKey); // marca como gerado pra não repetir no mesmo loop
     }
     seguranca++;
     mes++;
