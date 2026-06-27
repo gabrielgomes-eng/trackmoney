@@ -431,20 +431,28 @@ function applyTheme(theme) {
 /* ══════════════════════════════════════
    CATEGORY SELECTS
    ══════════════════════════════════════ */
+/* ══════════════════════════════════════
+   FILTRO DE CATEGORIA (Lançamentos)
+   Como a "categoria" agora é a própria descrição, listamos os
+   valores distintos já usados nos lançamentos, em vez de uma lista fixa.
+   ══════════════════════════════════════ */
 function populateCategorySelects() {
-  ['lancCategoria','filtroCategoriaLancamento'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const isFilter = id.startsWith('filtro');
-    const val = el.value;
-    el.innerHTML = isFilter ? '<option value="">Todas as categorias</option>' : '<option value="">Selecione...</option>';
-    STATE.categorias.forEach(cat => {
-      const opt = document.createElement('option');
-      opt.value = cat; opt.textContent = cat;
-      el.appendChild(opt);
-    });
-    if (val) el.value = val;
+  const el = document.getElementById('filtroCategoriaLancamento');
+  if (!el) return;
+  const val = el.value;
+  const usados = new Set([
+    ...STATE.receitas.map(r => r.categoria),
+    ...STATE.despesas.map(d => d.categoria)
+  ].filter(Boolean));
+  const lista = [...usados].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  el.innerHTML = '<option value="">Todas as categorias</option>';
+  lista.forEach(cat => {
+    const opt = document.createElement('option');
+    opt.value = cat; opt.textContent = cat;
+    el.appendChild(opt);
   });
+  if (val) el.value = val;
 }
 
 function updateMonthLabel() {
@@ -694,7 +702,6 @@ function openLancamentoModal(item = null, tipoForced = null) {
     document.getElementById('lancDescricao').value = item.descricao;
     document.getElementById('lancValor').value = item.valor;
     document.getElementById('lancData').value = item.data;
-    document.getElementById('lancCategoria').value = item.categoria;
     if (tipo === 'despesa') {
       document.querySelector(`input[name="lancStatus"][value="${item.status || STATUS_PENDENTE}"]`).checked = true;
     }
@@ -723,7 +730,7 @@ async function saveLancamento(e) {
   const descricao = document.getElementById('lancDescricao').value.trim();
   const valor     = parseFloat(document.getElementById('lancValor').value);
   const dataField = document.getElementById('lancData').value;
-  const categoria = document.getElementById('lancCategoria').value;
+  const categoria = descricao; // categoria = descrição (campo separado foi removido)
   const colName   = tipo === 'receita' ? 'receitas' : 'despesas';
 
   try {
