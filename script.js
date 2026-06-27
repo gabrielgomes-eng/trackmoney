@@ -381,15 +381,14 @@ function navigate(pageId) {
   if (navItem) navItem.classList.add('active');
 
   const titles = {
-    dashboard:'Dashboard', receitas:'Receitas', despesas:'Despesas',
+    dashboard:'Dashboard', lancamentos:'Lançamentos',
     relatorios:'Relatórios', metas:'Metas Financeiras',
     contas:'Contas a Pagar', configuracoes:'Configurações'
   };
   document.getElementById('topbarTitle').textContent = titles[pageId] || pageId;
 
   if (pageId === 'dashboard')     renderDashboard();
-  if (pageId === 'receitas')      renderReceitas();
-  if (pageId === 'despesas')      renderDespesas();
+  if (pageId === 'lancamentos')   renderLancamentos();
   if (pageId === 'relatorios')    renderRelatorios();
   if (pageId === 'metas')         renderMetas();
   if (pageId === 'contas')        renderContas();
@@ -433,7 +432,7 @@ function applyTheme(theme) {
    CATEGORY SELECTS
    ══════════════════════════════════════ */
 function populateCategorySelects() {
-  ['lancCategoria','filtroCategoriaReceita','filtroCategoriaDespesa'].forEach(id => {
+  ['lancCategoria','filtroCategoriaLancamento'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     const isFilter = id.startsWith('filtro');
@@ -599,38 +598,64 @@ function renderCategoryTable(elId, items, color) {
 }
 
 /* ══════════════════════════════════════
-   RECEITAS
+   LANÇAMENTOS (Receitas + Despesas unificados)
    ══════════════════════════════════════ */
-function renderReceitas() {
+function renderLancamentos() {
   populateCategorySelects();
-  const search = (document.getElementById('filtroReceitas')?.value||'').toLowerCase();
-  const cat    = document.getElementById('filtroCategoriaReceita')?.value||'';
-  let items = filterByMonth(STATE.receitas).filter(r=>(!search||r.descricao.toLowerCase().includes(search))&&(!cat||r.categoria===cat));
-  if(STATE.sort.field) items=sortItems(items,STATE.sort.field,STATE.sort.asc);
-  else items.sort((a,b)=>new Date(b.data)-new Date(a.data));
+  const search = (document.getElementById('filtroLancamentos')?.value || '').toLowerCase();
+  const tipo   = document.getElementById('filtroTipoLancamento')?.value || '';
+  const cat    = document.getElementById('filtroCategoriaLancamento')?.value || '';
+  const status = document.getElementById('filtroStatusLancamento')?.value || '';
 
-  const tbody=document.getElementById('bodyReceitas');
-  if(!items.length){tbody.innerHTML=`<tr class="empty-row"><td colspan="5"><div class="empty-state"><iconify-icon icon="mdi:cash-plus" width="40"></iconify-icon><p>Nenhuma receita encontrada</p></div></td></tr>`;return;}
-  tbody.innerHTML=items.map(r=>`<tr><td data-label="Descrição">${r.descricao}</td><td data-label="Valor" style="color:var(--accent);font-weight:700">${fmt(r.valor)}</td><td data-label="Data">${fmtDate(r.data)}</td><td data-label="Categoria"><span class="chip chip-income">${r.categoria}</span></td><td><button class="action-btn edit" onclick="editReceita('${r.id}')"><iconify-icon icon="mdi:pencil-outline" width="17"></iconify-icon></button><button class="action-btn del" onclick="confirmDelete('receita','${r.id}')"><iconify-icon icon="mdi:trash-can-outline" width="17"></iconify-icon></button></td></tr>`).join('');
+  // Junta receitas e despesas num único array, marcando o tipo de cada item
+  const receitasComTipo = filterByMonth(STATE.receitas).map(r => ({ ...r, tipo: 'receita' }));
+  const despesasComTipo = filterByMonth(STATE.despesas).map(d => ({ ...d, tipo: 'despesa' }));
+  let items = [...receitasComTipo, ...despesasComTipo].filter(item =>
+    (!search || item.descricao.toLowerCase().includes(search)) &&
+    (!tipo || item.tipo === tipo) &&
+    (!cat || item.categoria === cat) &&
+    (!status || item.status === status)
+  );
+
+  if (STATE.sort.field) items = sortItems(items, STATE.sort.field, STATE.sort.asc);
+  else items.sort((a, b) => new Date(b.data) - new Date(a.data));
+
+  const tbody = document.getElementById('bodyLancamentos');
+  if (!items.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="7"><div class="empty-state"><iconify-icon icon="mdi:swap-vertical" width="40"></iconify-icon><p>Nenhum lançamento encontrado</p></div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map(item => {
+    const isReceita = item.tipo === 'receita';
+    const editFn = isReceita ? 'editReceita' : 'editDespesa';
+    const delTipo = isReceita ? 'receita' : 'despesa';
+    const valorColor = isReceita ? 'var(--accent)' : 'var(--danger)';
+    const valorSinal = isReceita ? '+' : '-';
+
+    const statusCell = isReceita
+      ? '<span class="muted-text" style="margin:0">—</span>'
+      : `<span class="chip chip-${item.status}">${item.status === STATUS_PAGO ? 'Pago' : 'Pendente'}</span>`;
+
+    const payBtn = (!isReceita && item.status === STATUS_PENDENTE)
+      ? `<button class="action-btn pay" title="Marcar pago" onclick="marcarPago('${item.id}')"><iconify-icon icon="mdi:check" width="17"></iconify-icon></button>`
+      : '';
+
+    return `<tr>
+      <td data-label="Descrição">${item.descricao}</td>
+      <td data-label="Tipo"><span class="chip chip-${isReceita ? 'income' : 'expense'}">${isReceita ? 'Entrada' : 'Saída'}</span></td>
+      <td data-label="Valor" style="color:${valorColor};font-weight:700">${valorSinal} ${fmt(item.valor)}</td>
+      <td data-label="Data">${fmtDate(item.data)}</td>
+      <td data-label="Categoria"><span class="chip chip-${isReceita ? 'income' : 'expense'}">${item.categoria}</span></td>
+      <td data-label="Status">${statusCell}</td>
+      <td>${payBtn}<button class="action-btn edit" onclick="${editFn}('${item.id}')"><iconify-icon icon="mdi:pencil-outline" width="17"></iconify-icon></button><button class="action-btn del" onclick="confirmDelete('${delTipo}','${item.id}')"><iconify-icon icon="mdi:trash-can-outline" width="17"></iconify-icon></button></td>
+    </tr>`;
+  }).join('');
 }
 
 /* ══════════════════════════════════════
    MODAL UNIFICADO: NOVO LANÇAMENTO
    ══════════════════════════════════════ */
-function renderDespesas() {
-  populateCategorySelects();
-  const search=(document.getElementById('filtroDespesas')?.value||'').toLowerCase();
-  const cat=document.getElementById('filtroCategoriaDespesa')?.value||'';
-  const status=document.getElementById('filtroStatusDespesa')?.value||'';
-  let items=filterByMonth(STATE.despesas).filter(d=>(!search||d.descricao.toLowerCase().includes(search))&&(!cat||d.categoria===cat)&&(!status||d.status===status));
-  if(STATE.sort.field) items=sortItems(items,STATE.sort.field,STATE.sort.asc);
-  else items.sort((a,b)=>new Date(b.data)-new Date(a.data));
-
-  const tbody=document.getElementById('bodyDespesas');
-  if(!items.length){tbody.innerHTML=`<tr class="empty-row"><td colspan="6"><div class="empty-state"><iconify-icon icon="mdi:cash-minus" width="40"></iconify-icon><p>Nenhuma despesa encontrada</p></div></td></tr>`;return;}
-  tbody.innerHTML=items.map(d=>`<tr><td data-label="Descrição">${d.descricao}</td><td data-label="Valor" style="color:var(--danger);font-weight:700">${fmt(d.valor)}</td><td data-label="Data">${fmtDate(d.data)}</td><td data-label="Categoria"><span class="chip chip-expense">${d.categoria}</span></td><td data-label="Status"><span class="chip chip-${d.status}">${d.status===STATUS_PAGO?'Pago':'Pendente'}</span></td><td>${d.status===STATUS_PENDENTE?`<button class="action-btn pay" title="Marcar pago" onclick="marcarPago('${d.id}')"><iconify-icon icon="mdi:check" width="17"></iconify-icon></button>`:''}<button class="action-btn edit" onclick="editDespesa('${d.id}')"><iconify-icon icon="mdi:pencil-outline" width="17"></iconify-icon></button><button class="action-btn del" onclick="confirmDelete('despesa','${d.id}')"><iconify-icon icon="mdi:trash-can-outline" width="17"></iconify-icon></button></td></tr>`).join('');
-}
-
 function setTipoLancamento(tipo) {
   document.getElementById('btnTipoEntrada').classList.toggle('active', tipo === 'receita');
   document.getElementById('btnTipoSaida').classList.toggle('active', tipo === 'despesa');
@@ -1177,12 +1202,11 @@ function initEvents(){
   document.getElementById('formMeta').addEventListener('submit',saveMeta);
   document.getElementById('formMetaEco').addEventListener('submit',saveMetaEco);
   document.getElementById('btnConfirmDelete').addEventListener('click',executeDelete);
-  document.getElementById('filtroReceitas').addEventListener('input',renderReceitas);
-  document.getElementById('filtroCategoriaReceita').addEventListener('change',renderReceitas);
-  document.getElementById('filtroDespesas').addEventListener('input',renderDespesas);
-  document.getElementById('filtroCategoriaDespesa').addEventListener('change',renderDespesas);
-  document.getElementById('filtroStatusDespesa').addEventListener('change',renderDespesas);
-  document.querySelectorAll('th[data-sort]').forEach(th=>{th.addEventListener('click',()=>{const field=th.dataset.sort;if(STATE.sort.field===field)STATE.sort.asc=!STATE.sort.asc;else{STATE.sort.field=field;STATE.sort.asc=true;}if(th.closest('#tabelaReceitas'))renderReceitas();else renderDespesas();});});
+  document.getElementById('filtroLancamentos').addEventListener('input',renderLancamentos);
+  document.getElementById('filtroTipoLancamento').addEventListener('change',renderLancamentos);
+  document.getElementById('filtroCategoriaLancamento').addEventListener('change',renderLancamentos);
+  document.getElementById('filtroStatusLancamento').addEventListener('change',renderLancamentos);
+  document.querySelectorAll('th[data-sort]').forEach(th=>{th.addEventListener('click',()=>{const field=th.dataset.sort;if(STATE.sort.field===field)STATE.sort.asc=!STATE.sort.asc;else{STATE.sort.field=field;STATE.sort.asc=true;}if(th.closest('#tabelaLancamentos'))renderLancamentos();});});
   document.getElementById('btnExportCSV').addEventListener('click',exportCSV);
   document.getElementById('btnExportPDF').addEventListener('click',exportPDF);
   document.getElementById('btnLimparDados').addEventListener('click',clearAllData);

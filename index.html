@@ -72,13 +72,9 @@
       <iconify-icon icon="mdi:view-dashboard-outline" width="20"></iconify-icon>
       <span>Dashboard</span>
     </a>
-    <a class="nav-item" data-page="receitas">
-      <iconify-icon icon="mdi:trending-up" width="20"></iconify-icon>
-      <span>Receitas</span>
-    </a>
-    <a class="nav-item" data-page="despesas">
-      <iconify-icon icon="mdi:trending-down" width="20"></iconify-icon>
-      <span>Despesas</span>
+    <a class="nav-item" data-page="lancamentos">
+      <iconify-icon icon="mdi:swap-vertical" width="20"></iconify-icon>
+      <span>Lançamentos</span>
     </a>
     <a class="nav-item" data-page="relatorios">
       <iconify-icon icon="mdi:chart-bar" width="20"></iconify-icon>
@@ -201,7 +197,7 @@
     <div class="card mt-2">
       <div class="card-header-flex">
         <h3>Últimos Lançamentos</h3>
-        <button class="btn btn-sm btn-outline" data-page="receitas" data-nav>Ver tudo</button>
+        <button class="btn btn-sm btn-outline" data-page="lancamentos" data-nav>Ver tudo</button>
       </div>
       <div class="transactions-list" id="recentTransactions">
         <div class="empty-state">
@@ -213,49 +209,23 @@
   </section>
 
   <!-- ══════ PAGE: RECEITAS ══════ -->
-  <section class="page" id="page-receitas">
+  <section class="page" id="page-lancamentos">
     <div class="page-header">
-      <h1>Receitas</h1>
+      <h1>Lançamentos</h1>
     </div>
 
     <!-- FILTERS -->
     <div class="filters-bar">
-      <input type="text" class="filter-input" id="filtroReceitas" placeholder="🔍  Buscar receita...">
-      <select class="filter-select" id="filtroCategoriaReceita">
+      <input type="text" class="filter-input" id="filtroLancamentos" placeholder="🔍  Buscar lançamento...">
+      <select class="filter-select" id="filtroTipoLancamento">
+        <option value="">Todos os tipos</option>
+        <option value="receita">Entradas</option>
+        <option value="despesa">Saídas</option>
+      </select>
+      <select class="filter-select" id="filtroCategoriaLancamento">
         <option value="">Todas as categorias</option>
       </select>
-    </div>
-
-    <div class="card">
-      <table class="data-table" id="tabelaReceitas">
-        <thead>
-          <tr>
-            <th data-sort="descricao">Descrição <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
-            <th data-sort="valor">Valor <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
-            <th data-sort="data">Data <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
-            <th data-sort="categoria">Categoria <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-        <tbody id="bodyReceitas">
-          <tr class="empty-row"><td colspan="5"><div class="empty-state"><iconify-icon icon="mdi:cash-plus" width="40"></iconify-icon><p>Nenhuma receita cadastrada</p></div></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <!-- ══════ PAGE: DESPESAS ══════ -->
-  <section class="page" id="page-despesas">
-    <div class="page-header">
-      <h1>Despesas</h1>
-    </div>
-
-    <div class="filters-bar">
-      <input type="text" class="filter-input" id="filtroDespesas" placeholder="🔍  Buscar despesa...">
-      <select class="filter-select" id="filtroCategoriaDespesa">
-        <option value="">Todas as categorias</option>
-      </select>
-      <select class="filter-select" id="filtroStatusDespesa">
+      <select class="filter-select" id="filtroStatusLancamento">
         <option value="">Todos os status</option>
         <option value="pago">Pago</option>
         <option value="pendente">Pendente</option>
@@ -263,19 +233,20 @@
     </div>
 
     <div class="card">
-      <table class="data-table" id="tabelaDespesas">
+      <table class="data-table" id="tabelaLancamentos">
         <thead>
           <tr>
             <th data-sort="descricao">Descrição <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
+            <th>Tipo</th>
             <th data-sort="valor">Valor <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
             <th data-sort="data">Data <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
             <th data-sort="categoria">Categoria <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
-            <th data-sort="status">Status <iconify-icon icon="mdi:sort" width="14"></iconify-icon></th>
+            <th>Status</th>
             <th>Ações</th>
           </tr>
         </thead>
-        <tbody id="bodyDespesas">
-          <tr class="empty-row"><td colspan="6"><div class="empty-state"><iconify-icon icon="mdi:cash-minus" width="40"></iconify-icon><p>Nenhuma despesa cadastrada</p></div></td></tr>
+        <tbody id="bodyLancamentos">
+          <tr class="empty-row"><td colspan="7"><div class="empty-state"><iconify-icon icon="mdi:swap-vertical" width="40"></iconify-icon><p>Nenhum lançamento cadastrado</p></div></td></tr>
         </tbody>
       </table>
     </div>
