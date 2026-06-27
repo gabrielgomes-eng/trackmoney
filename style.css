@@ -1484,13 +1484,31 @@ body {
    ══════════════════════════════════════ */
 @media (max-width: 480px) {
 
-  /* ── Topbar ── */
+  /* ── Topbar: quebra em 2 linhas pra caber o botão de Novo Lançamento ── */
   .topbar {
-    padding: 0 12px;
-    gap: 8px;
-    height: 56px;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 56px;
+    padding: 10px 12px;
+    row-gap: 10px;
   }
 
+  .menu-toggle      { order: 1; }
+  .topbar-title     { order: 2; flex: 1 1 auto; min-width: 0; }
+  .profile-btn-wrap { order: 3; margin-left: 0; }
+
+  .topbar-actions {
+    order: 4;
+    flex: 1 0 100%;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .btn-novo-lancamento {
+    flex-shrink: 0;
+  }
+
+  /* ── Topbar ── */
   .topbar-title {
     font-size: .9rem;
   }
