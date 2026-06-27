@@ -754,7 +754,7 @@ async function saveLancamento(e) {
       };
       await fbAdd('recorrentes', recorrenteData);
       STATE.recorrentes.push(recorrenteData); // disponível localmente antes do snapshot confirmar
-      await gerarOcorrenciasFaltantes(recorrenteData);
+      await gerarMesAtualRecorrente(recorrenteData);
 
       toast(tipo === 'receita' ? 'Entrada recorrente cadastrada!' : 'Conta recorrente cadastrada!');
       closeModal('modalLancamento');
@@ -927,49 +927,42 @@ async function criarOcorrenciaRecorrente(rec, ano, mesIndex) {
   await fbAdd(colName, data);
 }
 
-// Gera todas as ocorrências que faltam (desde a criação da recorrência até o mês atual real)
-async function gerarOcorrenciasFaltantes(rec) {
+// Gera APENAS o mês atual para uma recorrência, se ainda não foi gerado.
+// Usa o campo "mesesGerados" no documento do recorrente como fonte da verdade.
+// Isso evita duplicatas e impede que lançamentos deletados ressuscitem.
+async function gerarMesAtualRecorrente(rec) {
   const agora = new Date();
+  const anoAtual = agora.getFullYear();
+  const mesAtual = agora.getMonth();
+  const monthKey = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}`;
+
+  // Verifica se o mês já foi gerado pelo campo salvo no Firestore
+  const mesesGerados = rec.mesesGerados || [];
+  if (mesesGerados.includes(monthKey)) return; // já gerado, não duplica
+
+  // Só gera se a data de início do recorrente já chegou
   const inicio = new Date(rec.criadoEm + 'T12:00:00');
-  let ano = inicio.getFullYear();
-  let mes = inicio.getMonth();
-  const anoFim = agora.getFullYear();
-  const mesFim = agora.getMonth();
-  const colName = rec.tipo === 'receita' ? 'receitas' : 'despesas';
+  if (anoAtual < inicio.getFullYear()) return;
+  if (anoAtual === inicio.getFullYear() && mesAtual < inicio.getMonth()) return;
 
-  // Busca diretamente no Firestore as ocorrências já existentes para esse recorrente
-  // Isso evita o problema de race condition com o STATE ainda desatualizado
-  let existentes = new Set();
-  try {
-    const snap = await col(colName)
-      .where('origemRecorrenteId', '==', rec.id)
-      .get();
-    snap.docs.forEach(d => {
-      const data = d.data().data;
-      if (data) existentes.add(data.slice(0, 7)); // "YYYY-MM"
-    });
-  } catch(e) { console.warn('Erro ao buscar existentes:', e); }
+  // Cria o lançamento do mês atual
+  await criarOcorrenciaRecorrente(rec, anoAtual, mesAtual);
 
-  let seguranca = 0;
-  while ((ano < anoFim || (ano === anoFim && mes <= mesFim)) && seguranca < 36) {
-    const monthKey = `${ano}-${String(mes + 1).padStart(2, '0')}`;
-    if (!existentes.has(monthKey)) {
-      await criarOcorrenciaRecorrente(rec, ano, mes);
-      existentes.add(monthKey); // marca como gerado pra não repetir no mesmo loop
-    }
-    seguranca++;
-    mes++;
-    if (mes > 11) { mes = 0; ano++; }
-  }
+  // Marca o mês como gerado no Firestore
+  const novosMeses = [...mesesGerados, monthKey];
+  await col('recorrentes').doc(rec.id).update({ mesesGerados: novosMeses });
+
+  // Atualiza o state local também
+  rec.mesesGerados = novosMeses;
 }
 
-// Roda em todas as recorrências cadastradas — usado ao carregar o app
+// Roda em todas as recorrências — apenas gera o mês atual se ainda não gerou
 async function processarTodasRecorrencias() {
-  if (STATE._processandoRecorrencias) return; // evita execuções concorrentes
+  if (STATE._processandoRecorrencias) return;
   STATE._processandoRecorrencias = true;
   try {
     for (const rec of STATE.recorrentes) {
-      await gerarOcorrenciasFaltantes(rec);
+      await gerarMesAtualRecorrente(rec);
     }
   } catch (err) {
     console.error('Erro ao processar recorrências:', err);
