@@ -927,8 +927,7 @@ async function criarOcorrenciaRecorrente(rec, ano, mesIndex) {
   await fbAdd(colName, data);
 }
 
-// Gera APENAS o mês atual usando transaction atômica do Firestore.
-// A transaction garante que mesmo se rodar várias vezes simultâneas, só cria UMA ocorrência.
+// Gera APENAS o mês atual — verifica no Firestore se já existe antes de criar
 async function gerarMesAtualRecorrente(rec) {
   const agora = new Date();
   const anoAtual = agora.getFullYear();
@@ -940,44 +939,40 @@ async function gerarMesAtualRecorrente(rec) {
   if (anoAtual < inicio.getFullYear()) return;
   if (anoAtual === inicio.getFullYear() && mesAtual < inicio.getMonth()) return;
 
-  const recRef = col('recorrentes').doc(rec.id);
+  const colName = rec.tipo === 'receita' ? 'receitas' : 'despesas';
+  const dia = diaValidoNoMes(anoAtual, mesAtual, rec.diaMes);
+  const dataStr = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
 
   try {
+    // PASSO 1: Verifica no Firestore se já existe lançamento desse recorrente nesse mês
+    // Isso resolve o problema de recorrentes antigos sem mesesGerados E evita duplicatas
+    const existing = await col(colName)
+      .where('origemRecorrenteId', '==', rec.id)
+      .where('data', '==', dataStr)
+      .get();
+
+    if (!existing.empty) return; // já existe, não cria
+
+    // PASSO 2: Usa transaction para marcar o mês atomicamente
+    const recRef = col('recorrentes').doc(rec.id);
+    let devecriar = false;
+
     await db.runTransaction(async (transaction) => {
-      // Lê o documento DENTRO da transaction (valor mais recente)
       const recSnap = await transaction.get(recRef);
       if (!recSnap.exists) return;
-
       const mesesGerados = recSnap.data().mesesGerados || [];
-
-      // Checa dentro da transaction — garante atomicidade
       if (mesesGerados.includes(monthKey)) return;
-
-      // Marca o mês ANTES de criar o lançamento (dentro da transaction)
-      const novosMeses = [...mesesGerados, monthKey];
-      transaction.update(recRef, { mesesGerados: novosMeses });
-
-      // Atualiza state local
-      rec.mesesGerados = novosMeses;
+      transaction.update(recRef, { mesesGerados: [...mesesGerados, monthKey] });
+      devecriar = true;
     });
 
-    // Só cria o lançamento APÓS a transaction confirmar (fora dela)
-    // Verifica novamente no state local pra garantir
-    if ((rec.mesesGerados || []).includes(monthKey)) {
-      // Checa se já existe lançamento no Firestore para evitar duplicata em caso de retry
-      const colName = rec.tipo === 'receita' ? 'receitas' : 'despesas';
-      const dia = diaValidoNoMes(anoAtual, mesAtual, rec.diaMes);
-      const dataStr = `${anoAtual}-${String(mesAtual + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
-      const existing = await col(colName)
-        .where('origemRecorrenteId', '==', rec.id)
-        .where('data', '==', dataStr)
-        .get();
-      if (existing.empty) {
-        await criarOcorrenciaRecorrente(rec, anoAtual, mesAtual);
-      }
+    // PASSO 3: Só cria se a transaction marcou com sucesso
+    if (devecriar) {
+      await criarOcorrenciaRecorrente(rec, anoAtual, mesAtual);
     }
+
   } catch(err) {
-    console.warn('Transaction recorrente falhou:', err);
+    console.warn('Erro ao gerar recorrente:', err);
   }
 }
 
