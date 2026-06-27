@@ -35,6 +35,7 @@ const STATE = {
   receitas:     [],
   despesas:     [],
   metas:        [],
+  recorrentes:  [],
   categorias:   [...CATEGORIAS_PADRAO],
   metaEconomia: 0,
   currentMonth: new Date().getMonth(),
@@ -177,6 +178,15 @@ function attachListeners() {
     hideSync();
   }, err => { console.error('Metas:', err); hideSync(); });
 
+  // Recorrentes (entradas/saídas que se repetem todo mês)
+  const unsubRecorr = col('recorrentes').onSnapshot(snap => {
+    STATE.recorrentes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    refreshCurrentPage();
+    hideSync();
+    // Gera automaticamente os lançamentos do mês que ainda não existem
+    processarTodasRecorrencias().then(() => verificarLembretesRecorrentes());
+  }, err => { console.error('Recorrentes:', err); hideSync(); });
+
   // Config do usuário (categorias, metaEconomia, tema)
   const unsubCfg = userDoc().onSnapshot(snap => {
     if (snap.exists) {
@@ -189,7 +199,7 @@ function attachListeners() {
     hideSync();
   }, err => { console.error('Config:', err); hideSync(); });
 
-  STATE.listeners.push(unsubRec, unsubDesp, unsubMeta, unsubCfg);
+  STATE.listeners.push(unsubRec, unsubDesp, unsubMeta, unsubRecorr, unsubCfg);
 }
 
 /* ══════════════════════════════════════
@@ -423,7 +433,7 @@ function applyTheme(theme) {
    CATEGORY SELECTS
    ══════════════════════════════════════ */
 function populateCategorySelects() {
-  ['receitaCategoria','despesaCategoria','filtroCategoriaReceita','filtroCategoriaDespesa'].forEach(id => {
+  ['lancCategoria','filtroCategoriaReceita','filtroCategoriaDespesa'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     const isFilter = id.startsWith('filtro');
@@ -604,37 +614,8 @@ function renderReceitas() {
   tbody.innerHTML=items.map(r=>`<tr><td data-label="Descrição">${r.descricao}</td><td data-label="Valor" style="color:var(--accent);font-weight:700">${fmt(r.valor)}</td><td data-label="Data">${fmtDate(r.data)}</td><td data-label="Categoria"><span class="chip chip-income">${r.categoria}</span></td><td><button class="action-btn edit" onclick="editReceita('${r.id}')"><iconify-icon icon="mdi:pencil-outline" width="17"></iconify-icon></button><button class="action-btn del" onclick="confirmDelete('receita','${r.id}')"><iconify-icon icon="mdi:trash-can-outline" width="17"></iconify-icon></button></td></tr>`).join('');
 }
 
-function openReceitaModal(receita=null) {
-  document.getElementById('formReceita').reset();
-  document.getElementById('receitaId').value='';
-  document.getElementById('modalReceitaTitulo').textContent=receita?'Editar Receita':'Nova Receita';
-  document.getElementById('receitaData').value=receita?receita.data:today();
-  if(receita){document.getElementById('receitaDescricao').value=receita.descricao;document.getElementById('receitaValor').value=receita.valor;document.getElementById('receitaCategoria').value=receita.categoria;document.getElementById('receitaId').value=receita.id;}
-  openModal('modalReceita');
-}
-
-function editReceita(id){const r=STATE.receitas.find(r=>r.id===id);if(r)openReceitaModal(r);}
-
-async function saveReceita(e) {
-  e.preventDefault();
-  if(!validateForm('formReceita'))return;
-  const id=document.getElementById('receitaId').value;
-  const data={
-    id: id||genId(),
-    descricao: document.getElementById('receitaDescricao').value.trim(),
-    valor:     parseFloat(document.getElementById('receitaValor').value),
-    data:      document.getElementById('receitaData').value,
-    categoria: document.getElementById('receitaCategoria').value
-  };
-  try {
-    await fbAdd('receitas', data);
-    toast(id?'Receita atualizada!':'Receita adicionada!');
-    closeModal('modalReceita');
-  } catch(err) { toast('Erro ao salvar: '+err.message,'error'); }
-}
-
 /* ══════════════════════════════════════
-   DESPESAS
+   MODAL UNIFICADO: NOVO LANÇAMENTO
    ══════════════════════════════════════ */
 function renderDespesas() {
   populateCategorySelects();
@@ -650,17 +631,122 @@ function renderDespesas() {
   tbody.innerHTML=items.map(d=>`<tr><td data-label="Descrição">${d.descricao}</td><td data-label="Valor" style="color:var(--danger);font-weight:700">${fmt(d.valor)}</td><td data-label="Data">${fmtDate(d.data)}</td><td data-label="Categoria"><span class="chip chip-expense">${d.categoria}</span></td><td data-label="Status"><span class="chip chip-${d.status}">${d.status===STATUS_PAGO?'Pago':'Pendente'}</span></td><td>${d.status===STATUS_PENDENTE?`<button class="action-btn pay" title="Marcar pago" onclick="marcarPago('${d.id}')"><iconify-icon icon="mdi:check" width="17"></iconify-icon></button>`:''}<button class="action-btn edit" onclick="editDespesa('${d.id}')"><iconify-icon icon="mdi:pencil-outline" width="17"></iconify-icon></button><button class="action-btn del" onclick="confirmDelete('despesa','${d.id}')"><iconify-icon icon="mdi:trash-can-outline" width="17"></iconify-icon></button></td></tr>`).join('');
 }
 
-function openDespesaModal(despesa=null) {
-  document.getElementById('formDespesa').reset();
-  document.getElementById('despesaId').value='';
-  document.getElementById('modalDespesaTitulo').textContent=despesa?'Editar Despesa':'Nova Despesa';
-  document.getElementById('despesaData').value=despesa?despesa.data:today();
-  if(despesa){document.getElementById('despesaDescricao').value=despesa.descricao;document.getElementById('despesaValor').value=despesa.valor;document.getElementById('despesaCategoria').value=despesa.categoria;document.getElementById('despesaId').value=despesa.id;document.querySelector(`input[name="despesaStatus"][value="${despesa.status}"]`).checked=true;}
-  else {document.querySelector(`input[name="despesaStatus"][value="${STATUS_PENDENTE}"]`).checked=true;}
-  openModal('modalDespesa');
+function setTipoLancamento(tipo) {
+  document.getElementById('btnTipoEntrada').classList.toggle('active', tipo === 'receita');
+  document.getElementById('btnTipoSaida').classList.toggle('active', tipo === 'despesa');
+  document.getElementById('formLancamento').dataset.tipo = tipo;
+
+  document.getElementById('lancStatusField').style.display = tipo === 'despesa' ? '' : 'none';
+
+  document.getElementById('lancRecorrenteLabel').textContent = tipo === 'despesa'
+    ? 'É uma dívida ou conta fixa que se repete todo mês?'
+    : 'Essa entrada se repete todo mês? (ex: salário)';
 }
 
-function editDespesa(id){const d=STATE.despesas.find(d=>d.id===id);if(d)openDespesaModal(d);}
+function toggleRecorrenteFields() {
+  const checked = document.getElementById('lancRecorrente').checked;
+  document.getElementById('recorrenteFields').style.display = checked ? '' : 'none';
+  document.getElementById('lancDiaMes').required = checked;
+  // Quando é recorrente, a data exata perde sentido (o dia do mês manda) — mas mantemos
+  // a data como referência da 1ª ocorrência.
+}
+
+function openLancamentoModal(item = null, tipoForced = null) {
+  const form = document.getElementById('formLancamento');
+  form.reset();
+  document.getElementById('lancId').value = '';
+  document.getElementById('lancRecorrenteId').value = '';
+  document.getElementById('lancData').value = today();
+  document.getElementById('recorrenteFields').style.display = 'none';
+  document.getElementById('lancDiaMes').required = false;
+
+  const tipo = tipoForced || (item && item.tipo) || 'receita';
+  setTipoLancamento(tipo);
+
+  if (item) {
+    document.getElementById('modalLancamentoTitulo').textContent = 'Editar Lançamento';
+    document.getElementById('lancId').value = item.id;
+    document.getElementById('lancDescricao').value = item.descricao;
+    document.getElementById('lancValor').value = item.valor;
+    document.getElementById('lancData').value = item.data;
+    document.getElementById('lancCategoria').value = item.categoria;
+    if (tipo === 'despesa') {
+      document.querySelector(`input[name="lancStatus"][value="${item.status || STATUS_PENDENTE}"]`).checked = true;
+    }
+    // Lançamentos já gerados (instâncias) não editam a recorrência em si —
+    // isso é feito na tela de Configurações, na lista de recorrentes.
+  } else {
+    document.getElementById('modalLancamentoTitulo').textContent = 'Novo Lançamento';
+    document.querySelector('input[name="lancStatus"][value="pendente"]').checked = true;
+  }
+
+  openModal('modalLancamento');
+}
+
+function editReceita(id){const r=STATE.receitas.find(r=>r.id===id);if(r)openLancamentoModal(r,'receita');}
+function editDespesa(id){const d=STATE.despesas.find(d=>d.id===id);if(d)openLancamentoModal(d,'despesa');}
+
+async function saveLancamento(e) {
+  e.preventDefault();
+  if (!validateForm('formLancamento')) return;
+
+  const tipo = document.getElementById('formLancamento').dataset.tipo || 'receita';
+  const id = document.getElementById('lancId').value;
+  const isRecorrente = document.getElementById('lancRecorrente').checked;
+  const statusEl = document.querySelector('input[name="lancStatus"]:checked');
+
+  const descricao = document.getElementById('lancDescricao').value.trim();
+  const valor     = parseFloat(document.getElementById('lancValor').value);
+  const dataField = document.getElementById('lancData').value;
+  const categoria = document.getElementById('lancCategoria').value;
+  const colName   = tipo === 'receita' ? 'receitas' : 'despesas';
+
+  try {
+    // Editando um lançamento já existente (instância normal, não recriamos a recorrência)
+    if (id) {
+      const data = { id, descricao, valor, data: dataField, categoria };
+      if (tipo === 'despesa') data.status = statusEl ? statusEl.value : STATUS_PENDENTE;
+      await fbAdd(colName, data);
+      toast('Lançamento atualizado!');
+      closeModal('modalLancamento');
+      return;
+    }
+
+    // Novo lançamento marcado como recorrente: cria o "modelo" + a primeira ocorrência
+    if (isRecorrente) {
+      const diaMes = parseInt(document.getElementById('lancDiaMes').value, 10);
+      if (!diaMes || diaMes < 1 || diaMes > 31) {
+        toast('Informe um dia do mês válido (1 a 31).', 'error');
+        return;
+      }
+      const lembrete = document.getElementById('lancLembrete').checked;
+
+      const recorrenteData = {
+        id: genId(),
+        tipo, descricao, valor, categoria, diaMes, lembrete,
+        criadoEm: today(),
+        ultimoMesGerado: null // controla quais meses já foram gerados (evita duplicar)
+      };
+      await fbAdd('recorrentes', recorrenteData);
+      STATE.recorrentes.push(recorrenteData); // disponível localmente antes do snapshot confirmar
+      await gerarOcorrenciasFaltantes(recorrenteData);
+
+      toast(tipo === 'receita' ? 'Entrada recorrente cadastrada!' : 'Conta recorrente cadastrada!');
+      closeModal('modalLancamento');
+      return;
+    }
+
+    // Lançamento normal (não recorrente)
+    const data = { id: genId(), descricao, valor, data: dataField, categoria };
+    if (tipo === 'despesa') data.status = statusEl ? statusEl.value : STATUS_PENDENTE;
+    await fbAdd(colName, data);
+    toast(tipo === 'receita' ? 'Receita adicionada!' : 'Despesa adicionada!');
+    closeModal('modalLancamento');
+
+  } catch (err) {
+    toast('Erro ao salvar: ' + err.message, 'error');
+  }
+}
 
 async function marcarPago(id) {
   try {
@@ -668,26 +754,6 @@ async function marcarPago(id) {
     await col('despesas').doc(id).update({ status: STATUS_PAGO });
     toast('Conta marcada como paga!');
   } catch(err){toast('Erro: '+err.message,'error');}
-}
-
-async function saveDespesa(e) {
-  e.preventDefault();
-  if(!validateForm('formDespesa'))return;
-  const id=document.getElementById('despesaId').value;
-  const statusEl=document.querySelector('input[name="despesaStatus"]:checked');
-  const data={
-    id: id||genId(),
-    descricao: document.getElementById('despesaDescricao').value.trim(),
-    valor:     parseFloat(document.getElementById('despesaValor').value),
-    data:      document.getElementById('despesaData').value,
-    categoria: document.getElementById('despesaCategoria').value,
-    status:    statusEl?statusEl.value:STATUS_PENDENTE
-  };
-  try {
-    await fbAdd('despesas', data);
-    toast(id?'Despesa atualizada!':'Despesa adicionada!');
-    closeModal('modalDespesa');
-  } catch(err){toast('Erro ao salvar: '+err.message,'error');}
 }
 
 /* ══════════════════════════════════════
@@ -779,6 +845,126 @@ function renderRelatorios(){renderChartRelatorios();}
 function renderConfiguracoes(){
   const el=document.getElementById('categoriasList');
   el.innerHTML=STATE.categorias.map(cat=>`<span class="cat-tag">${cat}<button title="Remover" onclick="removeCategoria('${cat}')"><iconify-icon icon="mdi:close" width="13"></iconify-icon></button></span>`).join('');
+  renderRecorrentes();
+}
+
+function renderRecorrentes(){
+  const tbody = document.getElementById('bodyRecorrentes');
+  if (!tbody) return;
+  if (!STATE.recorrentes.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6"><div class="empty-state"><iconify-icon icon="mdi:autorenew" width="40"></iconify-icon><p>Nenhum lançamento recorrente cadastrado</p></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = STATE.recorrentes.map(r => `
+    <tr>
+      <td data-label="Descrição">${r.descricao}</td>
+      <td data-label="Tipo"><span class="chip chip-${r.tipo==='receita'?'income':'expense'}">${r.tipo==='receita'?'Entrada':'Saída'}</span></td>
+      <td data-label="Valor" style="font-weight:700">${fmt(r.valor)}</td>
+      <td data-label="Dia do mês">Dia ${r.diaMes}</td>
+      <td data-label="Lembrete">${r.lembrete ? '<iconify-icon icon="mdi:bell-ring-outline" width="18" style="color:var(--accent)"></iconify-icon>' : '<iconify-icon icon="mdi:bell-off-outline" width="18" style="color:var(--text-secondary)"></iconify-icon>'}</td>
+      <td><button class="action-btn del" onclick="deleteRecorrente('${r.id}')" title="Cancelar recorrência"><iconify-icon icon="mdi:trash-can-outline" width="17"></iconify-icon></button></td>
+    </tr>
+  `).join('');
+}
+
+async function deleteRecorrente(id) {
+  if (!confirm('Cancelar essa recorrência? Os lançamentos já criados não serão apagados, só vai parar de gerar novos.')) return;
+  try {
+    await fbDelete('recorrentes', id);
+    toast('Recorrência cancelada.');
+  } catch(err) { toast('Erro: ' + err.message, 'error'); }
+}
+
+/* ══════════════════════════════════════
+   RECORRÊNCIA — geração automática mensal
+   ══════════════════════════════════════ */
+
+// Retorna o dia válido para o mês (ex: dia 31 em fevereiro vira o último dia de fevereiro)
+function diaValidoNoMes(ano, mesIndex, dia) {
+  const ultimoDia = new Date(ano, mesIndex + 1, 0).getDate();
+  return Math.min(dia, ultimoDia);
+}
+
+// Cria a ocorrência (lançamento real) de uma recorrência para um mês específico
+async function criarOcorrenciaRecorrente(rec, ano, mesIndex) {
+  const dia = diaValidoNoMes(ano, mesIndex, rec.diaMes);
+  const dataStr = `${ano}-${String(mesIndex + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+  const colName = rec.tipo === 'receita' ? 'receitas' : 'despesas';
+  const data = {
+    id: genId(),
+    descricao: rec.descricao,
+    valor: rec.valor,
+    data: dataStr,
+    categoria: rec.categoria,
+    origemRecorrenteId: rec.id
+  };
+  if (rec.tipo === 'despesa') data.status = STATUS_PENDENTE;
+  await fbAdd(colName, data);
+}
+
+// Gera todas as ocorrências que faltam (desde a criação da recorrência até o mês atual real)
+async function gerarOcorrenciasFaltantes(rec) {
+  const agora = new Date();
+  const inicio = new Date(rec.criadoEm + 'T12:00:00');
+  let ano = inicio.getFullYear();
+  let mes = inicio.getMonth();
+  const anoFim = agora.getFullYear();
+  const mesFim = agora.getMonth();
+
+  let seguranca = 0; // limite de iterações, evita loop infinito em caso de dado corrompido
+  while ((ano < anoFim || (ano === anoFim && mes <= mesFim)) && seguranca < 36) {
+    const monthKey = `${ano}-${String(mes + 1).padStart(2, '0')}`;
+    const arr = rec.tipo === 'receita' ? STATE.receitas : STATE.despesas;
+    const jaExiste = arr.some(item => item.origemRecorrenteId === rec.id && item.data && item.data.slice(0, 7) === monthKey);
+    if (!jaExiste) {
+      await criarOcorrenciaRecorrente(rec, ano, mes);
+    }
+    seguranca++;
+    mes++;
+    if (mes > 11) { mes = 0; ano++; }
+  }
+}
+
+// Roda em todas as recorrências cadastradas — usado ao carregar o app
+async function processarTodasRecorrencias() {
+  if (STATE._processandoRecorrencias) return; // evita execuções concorrentes
+  STATE._processandoRecorrencias = true;
+  try {
+    for (const rec of STATE.recorrentes) {
+      await gerarOcorrenciasFaltantes(rec);
+    }
+  } catch (err) {
+    console.error('Erro ao processar recorrências:', err);
+  } finally {
+    STATE._processandoRecorrencias = false;
+  }
+}
+
+// Verifica se hoje é o dia de algum lançamento recorrente e dispara notificação real
+function verificarLembretesRecorrentes() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  const hoje = new Date();
+  const diaHoje = hoje.getDate();
+  const mesAtualKey = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+
+  STATE.recorrentes.forEach(rec => {
+    if (!rec.lembrete) return;
+    const diaAlvo = diaValidoNoMes(hoje.getFullYear(), hoje.getMonth(), rec.diaMes);
+    if (diaHoje !== diaAlvo) return;
+    if (rec.ultimoLembreteEnviado === mesAtualKey) return; // já notificou esse mês
+
+    try {
+      new Notification('TrackMoney 💰', {
+        body: rec.tipo === 'despesa'
+          ? `Hoje é o vencimento de "${rec.descricao}" — ${fmt(rec.valor)}`
+          : `Hoje é o dia esperado de "${rec.descricao}" — ${fmt(rec.valor)}`,
+        icon: 'icon-192.png'
+      });
+    } catch(err) { console.warn('Falha ao notificar:', err); }
+
+    fbUpdate('recorrentes', { id: rec.id, ultimoLembreteEnviado: mesAtualKey }).catch(()=>{});
+  });
 }
 
 async function addCategoria(){
@@ -981,12 +1167,13 @@ function initEvents(){
   document.getElementById('nextMonth').addEventListener('click',()=>{STATE.currentMonth++;if(STATE.currentMonth>11){STATE.currentMonth=0;STATE.currentYear++;}updateMonthLabel();refreshCurrentPage();});
   document.querySelectorAll('[data-close]').forEach(btn=>{btn.addEventListener('click',()=>closeModal(btn.dataset.close));});
   document.querySelectorAll('.modal-overlay').forEach(o=>{o.addEventListener('click',e=>{if(e.target===o)closeModal(o.id);});});
-  document.getElementById('btnNovaReceita').addEventListener('click',()=>{populateCategorySelects();openReceitaModal();});
-  document.getElementById('btnNovaDespesa').addEventListener('click',()=>{populateCategorySelects();openDespesaModal();});
+  document.getElementById('btnNovoLancamento').addEventListener('click',()=>{populateCategorySelects();openLancamentoModal();});
   document.getElementById('btnNovaMeta').addEventListener('click',()=>openMetaModal());
   document.getElementById('btnEditarMetaEco').addEventListener('click',()=>{document.getElementById('metaEcoValor').value=STATE.metaEconomia||'';openModal('modalMetaEco');});
-  document.getElementById('formReceita').addEventListener('submit',saveReceita);
-  document.getElementById('formDespesa').addEventListener('submit',saveDespesa);
+  document.getElementById('formLancamento').addEventListener('submit',saveLancamento);
+  document.getElementById('btnTipoEntrada').addEventListener('click',()=>setTipoLancamento('receita'));
+  document.getElementById('btnTipoSaida').addEventListener('click',()=>setTipoLancamento('despesa'));
+  document.getElementById('lancRecorrente').addEventListener('change',toggleRecorrenteFields);
   document.getElementById('formMeta').addEventListener('submit',saveMeta);
   document.getElementById('formMetaEco').addEventListener('submit',saveMetaEco);
   document.getElementById('btnConfirmDelete').addEventListener('click',executeDelete);
@@ -1078,6 +1265,7 @@ window.editDespesa     = editDespesa;
 window.editMeta        = editMeta;
 window.marcarPago      = marcarPago;
 window.confirmDelete   = confirmDelete;
+window.deleteRecorrente = deleteRecorrente;
 window.removeCategoria = removeCategoria;
 
 document.addEventListener('DOMContentLoaded', () => {

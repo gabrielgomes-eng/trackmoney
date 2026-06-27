@@ -1821,3 +1821,106 @@ body {
   0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,.3); }
   50%       { box-shadow: 0 0 0 8px rgba(16,185,129,.0); }
 }
+
+/* ══════════════════════════════════════
+   LANÇAMENTO ÚNICO — toggle Entrada/Saída + recorrência
+   ══════════════════════════════════════ */
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-novo-lancamento {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.tipo-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.tipo-toggle-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: .9rem;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+
+.tipo-toggle-btn:hover { border-color: var(--accent); }
+
+.tipo-toggle-btn.income.active {
+  background: var(--accent-light);
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+.tipo-toggle-btn.expense.active {
+  background: var(--danger-light);
+  border-color: var(--danger);
+  color: var(--danger-hover);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .88rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.recorrente-toggle-group {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.recorrente-fields {
+  margin-top: 4px;
+  padding: 14px;
+  border: 1px dashed var(--accent);
+  border-radius: 10px;
+  background: var(--accent-light);
+}
+
+.recorrente-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .78rem;
+  color: var(--text-secondary);
+  margin: 8px 0 0;
+}
+
+.muted-text {
+  color: var(--text-secondary);
+  font-size: .85rem;
+  margin: -4px 0 4px;
+}
+
+@media (max-width: 768px) {
+  .btn-novo-label { display: none; }
+  .btn-novo-lancamento { padding: 10px; }
+}

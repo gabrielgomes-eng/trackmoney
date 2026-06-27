@@ -120,6 +120,9 @@
     </button>
     <div class="topbar-title" id="topbarTitle">Dashboard</div>
     <div class="topbar-actions">
+      <button class="btn btn-primary btn-novo-lancamento" id="btnNovoLancamento">
+        <iconify-icon icon="mdi:plus" width="18"></iconify-icon> <span class="btn-novo-label">Novo Lançamento</span>
+      </button>
       <div class="month-picker">
         <button class="btn-icon" id="prevMonth"><iconify-icon icon="mdi:chevron-left" width="20"></iconify-icon></button>
         <span id="currentMonthLabel">Jan 2025</span>
@@ -213,9 +216,6 @@
   <section class="page" id="page-receitas">
     <div class="page-header">
       <h1>Receitas</h1>
-      <button class="btn btn-primary" id="btnNovaReceita">
-        <iconify-icon icon="mdi:plus" width="18"></iconify-icon> Nova Receita
-      </button>
     </div>
 
     <!-- FILTERS -->
@@ -248,9 +248,6 @@
   <section class="page" id="page-despesas">
     <div class="page-header">
       <h1>Despesas</h1>
-      <button class="btn btn-danger" id="btnNovaDespesa">
-        <iconify-icon icon="mdi:plus" width="18"></iconify-icon> Nova Despesa
-      </button>
     </div>
 
     <div class="filters-bar">
@@ -424,91 +421,123 @@
           </button>
         </div>
       </div>
+
+      <div class="card" style="grid-column: 1 / -1;">
+        <h3 class="section-title">Lançamentos recorrentes</h3>
+        <p class="muted-text">Entradas e saídas que se repetem todo mês automaticamente (ex: salário, aluguel, conta de luz).</p>
+        <div class="table-wrap mt-1">
+          <table class="data-table" id="tabelaRecorrentes">
+            <thead>
+              <tr>
+                <th>Descrição</th>
+                <th>Tipo</th>
+                <th>Valor</th>
+                <th>Dia do mês</th>
+                <th>Lembrete</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="bodyRecorrentes">
+              <tr class="empty-row"><td colspan="6"><div class="empty-state"><iconify-icon icon="mdi:autorenew" width="40"></iconify-icon><p>Nenhum lançamento recorrente cadastrado</p></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </section>
 
 </main>
 
 <!-- ═══════════════════ MODAL: RECEITA ═══════════════════ -->
-<div class="modal-overlay" id="modalReceita">
+<div class="modal-overlay" id="modalLancamento">
   <div class="modal">
     <div class="modal-header">
-      <h2 id="modalReceitaTitulo">Nova Receita</h2>
-      <button class="modal-close" data-close="modalReceita"><iconify-icon icon="mdi:close" width="20"></iconify-icon></button>
+      <h2 id="modalLancamentoTitulo">Novo Lançamento</h2>
+      <button class="modal-close" data-close="modalLancamento"><iconify-icon icon="mdi:close" width="20"></iconify-icon></button>
     </div>
-    <form id="formReceita" novalidate>
-      <input type="hidden" id="receitaId">
-      <div class="form-group">
-        <label class="form-label">Descrição *</label>
-        <input type="text" class="input" id="receitaDescricao" placeholder="Ex: Salário, Freelance..." required>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Valor (R$) *</label>
-          <input type="number" class="input" id="receitaValor" placeholder="0,00" step="0.01" min="0.01" required>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Data *</label>
-          <input type="date" class="input" id="receitaData" required>
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Categoria *</label>
-        <select class="input" id="receitaCategoria" required>
-          <option value="">Selecione...</option>
-        </select>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline" data-close="modalReceita">Cancelar</button>
-        <button type="submit" class="btn btn-primary">Salvar</button>
-      </div>
-    </form>
-  </div>
-</div>
+    <form id="formLancamento" novalidate>
+      <input type="hidden" id="lancId">
+      <input type="hidden" id="lancRecorrenteId">
 
-<!-- ═══════════════════ MODAL: DESPESA ═══════════════════ -->
-<div class="modal-overlay" id="modalDespesa">
-  <div class="modal">
-    <div class="modal-header">
-      <h2 id="modalDespesaTitulo">Nova Despesa</h2>
-      <button class="modal-close" data-close="modalDespesa"><iconify-icon icon="mdi:close" width="20"></iconify-icon></button>
-    </div>
-    <form id="formDespesa" novalidate>
-      <input type="hidden" id="despesaId">
+      <!-- Toggle Entrada / Saída -->
+      <div class="form-group">
+        <label class="form-label">Tipo *</label>
+        <div class="tipo-toggle">
+          <button type="button" class="tipo-toggle-btn income active" id="btnTipoEntrada" data-tipo="receita">
+            <iconify-icon icon="mdi:arrow-down-circle-outline" width="18"></iconify-icon> Entrada
+          </button>
+          <button type="button" class="tipo-toggle-btn expense" id="btnTipoSaida" data-tipo="despesa">
+            <iconify-icon icon="mdi:arrow-up-circle-outline" width="18"></iconify-icon> Saída
+          </button>
+        </div>
+      </div>
+
       <div class="form-group">
         <label class="form-label">Descrição *</label>
-        <input type="text" class="input" id="despesaDescricao" placeholder="Ex: Aluguel, Supermercado..." required>
+        <input type="text" class="input" id="lancDescricao" placeholder="Ex: Salário, Aluguel, Freelance..." required>
       </div>
+
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Valor (R$) *</label>
-          <input type="number" class="input" id="despesaValor" placeholder="0,00" step="0.01" min="0.01" required>
+          <input type="number" class="input" id="lancValor" placeholder="0,00" step="0.01" min="0.01" required>
         </div>
         <div class="form-group">
           <label class="form-label">Data *</label>
-          <input type="date" class="input" id="despesaData" required>
+          <input type="date" class="input" id="lancData" required>
         </div>
       </div>
+
       <div class="form-group">
         <label class="form-label">Categoria *</label>
-        <select class="input" id="despesaCategoria" required>
+        <select class="input" id="lancCategoria" required>
           <option value="">Selecione...</option>
         </select>
       </div>
-      <div class="form-group">
+
+      <!-- Status: só aparece para Saída -->
+      <div class="form-group" id="lancStatusField">
         <label class="form-label">Status</label>
         <div class="radio-group">
           <label class="radio-label">
-            <input type="radio" name="despesaStatus" value="pago"> <span>Pago</span>
+            <input type="radio" name="lancStatus" value="pago"> <span>Pago</span>
           </label>
           <label class="radio-label">
-            <input type="radio" name="despesaStatus" value="pendente" checked> <span>Pendente</span>
+            <input type="radio" name="lancStatus" value="pendente" checked> <span>Pendente</span>
           </label>
         </div>
       </div>
+
+      <!-- Recorrência -->
+      <div class="form-group recorrente-toggle-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="lancRecorrente">
+          <span id="lancRecorrenteLabel">Essa entrada se repete todo mês? (ex: salário)</span>
+        </label>
+      </div>
+
+      <div id="recorrenteFields" class="recorrente-fields" style="display:none">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Dia do mês *</label>
+            <input type="number" class="input" id="lancDiaMes" min="1" max="31" placeholder="Ex: 5">
+          </div>
+          <div class="form-group" style="display:flex; align-items:flex-end;">
+            <label class="checkbox-label">
+              <input type="checkbox" id="lancLembrete">
+              <span>Quero receber um lembrete</span>
+            </label>
+          </div>
+        </div>
+        <p class="recorrente-hint">
+          <iconify-icon icon="mdi:information-outline" width="14"></iconify-icon>
+          O lançamento será criado automaticamente todo mês, no dia escolhido.
+        </p>
+      </div>
+
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline" data-close="modalDespesa">Cancelar</button>
-        <button type="submit" class="btn btn-danger">Salvar</button>
+        <button type="button" class="btn btn-outline" data-close="modalLancamento">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="btnSalvarLancamento">Salvar</button>
       </div>
     </form>
   </div>
