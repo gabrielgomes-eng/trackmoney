@@ -36,7 +36,6 @@ const STATE = {
   despesas:     [],
   metas:        [],
   recorrentes:  [],
-  _recorrenciasProcessadasNaSessao: false,
   categorias:   [...CATEGORIAS_PADRAO],
   metaEconomia: 0,
   currentMonth: new Date().getMonth(),
@@ -341,15 +340,6 @@ function onLogin(user) {
   };
 
   attachListeners();
-
-  // Processa recorrências apenas uma vez por sessão, com delay para aguardar o state
-  if (!STATE._recorrenciasProcessadasNaSessao) {
-    STATE._recorrenciasProcessadasNaSessao = true;
-    setTimeout(() => {
-      processarTodasRecorrencias().then(() => verificarLembretesRecorrentes());
-    }, 3000); // aguarda 3s para o Firestore popular o STATE
-  }
-
   // Load custom photo if saved
   userDoc().get().then(snap => {
     if (snap.exists && snap.data().photoURL) {
@@ -368,7 +358,6 @@ function onLogout() {
   document.getElementById('loginOverlay').classList.remove('hidden');
   document.getElementById('loginLoading').style.display = 'none';
   document.body.classList.remove('logged-in');
-  STATE._recorrenciasProcessadasNaSessao = false;
   const chip = document.getElementById('userChip');
   if (chip) { chip.style.display = 'none'; chip.classList.remove('open'); }
 
