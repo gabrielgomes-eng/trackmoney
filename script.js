@@ -38,6 +38,7 @@ const STATE = {
   recorrentes:  [],
   categorias:   [...CATEGORIAS_PADRAO],
   metaEconomia: 0,
+  metasInvestimento: {}, // { "Tesouro Direto": 5000, "Ações": 10000 }
   currentMonth: new Date().getMonth(),
   currentYear:  new Date().getFullYear(),
   sort:         { field: null, asc: true },
