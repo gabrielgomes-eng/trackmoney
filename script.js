@@ -682,14 +682,18 @@ function renderLancamentos() {
 function setTipoLancamento(tipo) {
   document.getElementById('btnTipoEntrada').classList.toggle('active', tipo === 'receita');
   document.getElementById('btnTipoSaida').classList.toggle('active', tipo === 'despesa');
+  document.getElementById('btnTipoInvestimento').classList.toggle('active', tipo === 'investimento');
   document.getElementById('formLancamento').dataset.tipo = tipo;
 
+  // Status (Pago/Pendente) só faz sentido pra Saída — investimento e entrada não têm pendência
   document.getElementById('lancStatusField').style.display = tipo === 'despesa' ? '' : 'none';
-  document.getElementById('lancInvestimentoField').style.display = tipo === 'despesa' ? '' : 'none';
 
-  document.getElementById('lancRecorrenteLabel').textContent = tipo === 'despesa'
-    ? 'É uma dívida ou conta fixa que se repete todo mês?'
-    : 'Essa entrada se repete todo mês? (ex: salário)';
+  const labels = {
+    despesa:      'É uma dívida ou conta fixa que se repete todo mês?',
+    investimento: 'Esse investimento se repete todo mês? (ex: aporte mensal)',
+    receita:      'Essa entrada se repete todo mês? (ex: salário)'
+  };
+  document.getElementById('lancRecorrenteLabel').textContent = labels[tipo] || labels.receita;
 }
 
 function toggleRecorrenteFields() {
@@ -709,8 +713,9 @@ function openLancamentoModal(item = null, tipoForced = null) {
   document.getElementById('recorrenteFields').style.display = 'none';
   document.getElementById('lancDiaMes').required = false;
 
-  const tipo = tipoForced || (item && item.tipo) || 'receita';
-  setTipoLancamento(tipo);
+  const tipoReal = tipoForced || (item && item.tipo) || 'receita';
+  const tipoVisual = tipoReal === 'despesa' && item && item.isInvestimento ? 'investimento' : tipoReal;
+  setTipoLancamento(tipoVisual);
 
   if (item) {
     document.getElementById('modalLancamentoTitulo').textContent = 'Editar Lançamento';
@@ -718,9 +723,8 @@ function openLancamentoModal(item = null, tipoForced = null) {
     document.getElementById('lancDescricao').value = item.descricao;
     document.getElementById('lancValor').value = item.valor;
     document.getElementById('lancData').value = item.data;
-    if (tipo === 'despesa') {
+    if (tipoVisual === 'despesa') {
       document.querySelector(`input[name="lancStatus"][value="${item.status || STATUS_PENDENTE}"]`).checked = true;
-      document.getElementById('lancInvestimento').checked = !!item.isInvestimento;
     }
     // Lançamentos já gerados (instâncias) não editam a recorrência em si —
     // isso é feito na tela de Configurações, na lista de recorrentes.
@@ -739,10 +743,11 @@ async function saveLancamento(e) {
   e.preventDefault();
   if (!validateForm('formLancamento')) return;
 
-  const tipo = document.getElementById('formLancamento').dataset.tipo || 'receita';
+  const tipoVisual = document.getElementById('formLancamento').dataset.tipo || 'receita';
+  const isInvestimento = tipoVisual === 'investimento';
+  const tipo = tipoVisual === 'receita' ? 'receita' : 'despesa'; // coleção real no Firestore
   const id = document.getElementById('lancId').value;
   const isRecorrente = document.getElementById('lancRecorrente').checked;
-  const isInvestimento = tipo === 'despesa' && document.getElementById('lancInvestimento').checked;
   const statusEl = document.querySelector('input[name="lancStatus"]:checked');
 
   const descricao = document.getElementById('lancDescricao').value.trim();
@@ -756,7 +761,7 @@ async function saveLancamento(e) {
     if (id) {
       const data = { id, descricao, valor, data: dataField, categoria };
       if (tipo === 'despesa') {
-        data.status = statusEl ? statusEl.value : STATUS_PENDENTE;
+        data.status = isInvestimento ? STATUS_PAGO : (statusEl ? statusEl.value : STATUS_PENDENTE);
         data.isInvestimento = isInvestimento;
       }
       await fbAdd(colName, data);
@@ -786,7 +791,7 @@ async function saveLancamento(e) {
       // primeira ocorrência automaticamente, e o ID determinístico evita duplicatas
       // mesmo que esse processo rode mais de uma vez.
 
-      toast(tipo === 'receita' ? 'Entrada recorrente cadastrada!' : 'Conta recorrente cadastrada!');
+      toast(tipo === 'receita' ? 'Entrada recorrente cadastrada!' : (isInvestimento ? 'Investimento recorrente cadastrado!' : 'Conta recorrente cadastrada!'));
       closeModal('modalLancamento');
       return;
     }
@@ -794,7 +799,7 @@ async function saveLancamento(e) {
     // Lançamento normal (não recorrente)
     const data = { id: genId(), descricao, valor, data: dataField, categoria };
     if (tipo === 'despesa') {
-      data.status = statusEl ? statusEl.value : STATUS_PENDENTE;
+      data.status = isInvestimento ? STATUS_PAGO : (statusEl ? statusEl.value : STATUS_PENDENTE);
       data.isInvestimento = isInvestimento;
     }
     await fbAdd(colName, data);
@@ -1238,6 +1243,7 @@ function initEvents(){
   document.getElementById('formLancamento').addEventListener('submit',saveLancamento);
   document.getElementById('btnTipoEntrada').addEventListener('click',()=>setTipoLancamento('receita'));
   document.getElementById('btnTipoSaida').addEventListener('click',()=>setTipoLancamento('despesa'));
+  document.getElementById('btnTipoInvestimento').addEventListener('click',()=>setTipoLancamento('investimento'));
   document.getElementById('lancRecorrente').addEventListener('change',toggleRecorrenteFields);
   document.getElementById('formMeta').addEventListener('submit',saveMeta);
   document.getElementById('formMetaEco').addEventListener('submit',saveMetaEco);

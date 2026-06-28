@@ -1897,6 +1897,19 @@ body {
   color: var(--danger-hover);
 }
 
+.tipo-toggle-btn.investimento.active {
+  background: var(--invest-light);
+  border-color: var(--invest);
+  color: var(--invest);
+}
+
+/* Com 3 botões, em telas estreitas o texto/ícone podem precisar encolher */
+.tipo-toggle-3 .tipo-toggle-btn {
+  padding: 10px 6px;
+  font-size: .82rem;
+  gap: 4px;
+}
+
 .checkbox-label {
   display: flex;
   align-items: center;
