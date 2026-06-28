@@ -465,18 +465,27 @@ function updateMonthLabel() {
 function renderDashboard() {
   const rec  = filterByMonth(STATE.receitas);
   const desp = filterByMonth(STATE.despesas);
+
+  // Despesas "reais" (gasto) excluem o que foi marcado como investimento/aporte
+  const despGasto = desp.filter(d => !d.isInvestimento);
+
   const totalRec  = rec.reduce((a,r)=>a+r.valor,0);
-  const totalDesp = desp.reduce((a,d)=>a+d.valor,0);
+  const totalDesp = despGasto.reduce((a,d)=>a+d.valor,0); // só gasto de verdade entra aqui
   const economiaMes = totalRec - totalDesp;
 
   // Saldo Atual = saldo acumulado de TODOS os lançamentos (não só do mês selecionado)
+  // Aqui SIM contamos os investimentos, porque o dinheiro saiu mesmo do caixa/conta.
   const saldoGeral = STATE.receitas.reduce((a,r)=>a+r.valor,0) - STATE.despesas.reduce((a,d)=>a+d.valor,0);
+
+  // Patrimônio investido = soma de TUDO que já foi marcado como investimento (acumulado, todos os meses)
+  const patrimonioInvestido = STATE.despesas.filter(d => d.isInvestimento).reduce((a,d)=>a+d.valor,0);
 
   document.getElementById('saldoAtual').textContent    = fmt(saldoGeral);
   document.getElementById('totalReceitas').textContent = fmt(totalRec);
   document.getElementById('totalDespesas').textContent = fmt(totalDesp);
   document.getElementById('economia').textContent      = fmt(economiaMes);
   document.getElementById('totalLancamentos').textContent = rec.length + desp.length;
+  document.getElementById('patrimonioInvestido').textContent = fmt(patrimonioInvestido);
 
   document.getElementById('saldoAtual').style.color = saldoGeral < 0 ? 'var(--danger)' : saldoGeral === 0 ? 'var(--text-primary)' : 'var(--accent)';
 
@@ -518,7 +527,7 @@ const PALETTE = ['#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f
 function destroyChart(id) { if (STATE.charts[id]) { STATE.charts[id].destroy(); delete STATE.charts[id]; } }
 
 function renderChartDashboard() {
-  const desp = filterByMonth(STATE.despesas);
+  const desp = filterByMonth(STATE.despesas).filter(d => !d.isInvestimento);
   const col  = getChartColors();
 
   destroyChart('pizza');
@@ -544,7 +553,7 @@ function renderChartDashboard() {
       if(m<0){m+=12;y--;}
       months.push(new Date(y,m,1).toLocaleDateString('pt-BR',{month:'short'}));
       recData.push(STATE.receitas.filter(r=>{const d=new Date(r.data+'T12:00:00');return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,r)=>a+r.valor,0));
-      despData.push(STATE.despesas.filter(d=>{const dt=new Date(d.data+'T12:00:00');return dt.getMonth()===m&&dt.getFullYear()===y;}).reduce((a,d)=>a+d.valor,0));
+      despData.push(STATE.despesas.filter(d=>{const dt=new Date(d.data+'T12:00:00');return dt.getMonth()===m&&dt.getFullYear()===y&&!d.isInvestimento;}).reduce((a,d)=>a+d.valor,0));
     }
     STATE.charts.comparativo = new Chart(ctxC, {
       type:'bar', data:{ labels:months, datasets:[
@@ -568,7 +577,7 @@ function renderChartRelatorios() {
       if(m<0){m+=12;y--;}
       months.push(new Date(y,m,1).toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}));
       recD.push(STATE.receitas.filter(r=>{const d=new Date(r.data+'T12:00:00');return d.getMonth()===m&&d.getFullYear()===y;}).reduce((a,r)=>a+r.valor,0));
-      despD.push(STATE.despesas.filter(d=>{const dt=new Date(d.data+'T12:00:00');return dt.getMonth()===m&&dt.getFullYear()===y;}).reduce((a,d)=>a+d.valor,0));
+      despD.push(STATE.despesas.filter(d=>{const dt=new Date(d.data+'T12:00:00');return dt.getMonth()===m&&dt.getFullYear()===y&&!d.isInvestimento;}).reduce((a,d)=>a+d.valor,0));
     }
     STATE.charts.mensal = new Chart(ctxM, {
       type:'bar', data:{labels:months,datasets:[{label:'Receitas',data:recD,backgroundColor:'rgba(16,185,129,.7)',borderRadius:6},{label:'Despesas',data:despD,backgroundColor:'rgba(239,68,68,.7)',borderRadius:6}]},
@@ -587,7 +596,7 @@ function renderChartRelatorios() {
     }
   }
 
-  renderCategoryTable('tabelaGastosCategoria',  filterByMonth(STATE.despesas), '#ef4444');
+  renderCategoryTable('tabelaGastosCategoria',  filterByMonth(STATE.despesas).filter(d=>!d.isInvestimento), '#ef4444');
   renderCategoryTable('tabelaReceitasCategoria', filterByMonth(STATE.receitas), '#10b981');
 }
 
@@ -641,20 +650,26 @@ function renderLancamentos() {
     const valorColor = isReceita ? 'var(--accent)' : 'var(--danger)';
     const valorSinal = isReceita ? '+' : '-';
 
+    const isInvestimento = !isReceita && !!item.isInvestimento;
+    const tipoLabel = isReceita ? 'Entrada' : (isInvestimento ? 'Investimento' : 'Saída');
+    const tipoChipClass = isReceita ? 'income' : (isInvestimento ? 'investimento' : 'expense');
+
     const statusCell = isReceita
       ? '<span class="muted-text" style="margin:0">—</span>'
-      : `<span class="chip chip-${item.status}">${item.status === STATUS_PAGO ? 'Pago' : 'Pendente'}</span>`;
+      : isInvestimento
+        ? '<span class="muted-text" style="margin:0">—</span>'
+        : `<span class="chip chip-${item.status}">${item.status === STATUS_PAGO ? 'Pago' : 'Pendente'}</span>`;
 
-    const payBtn = (!isReceita && item.status === STATUS_PENDENTE)
+    const payBtn = (!isReceita && !isInvestimento && item.status === STATUS_PENDENTE)
       ? `<button class="action-btn pay" title="Marcar pago" onclick="marcarPago('${item.id}')"><iconify-icon icon="mdi:check" width="17"></iconify-icon></button>`
       : '';
 
     return `<tr>
       <td data-label="Descrição">${item.descricao}</td>
-      <td data-label="Tipo"><span class="chip chip-${isReceita ? 'income' : 'expense'}">${isReceita ? 'Entrada' : 'Saída'}</span></td>
+      <td data-label="Tipo"><span class="chip chip-${tipoChipClass}">${tipoLabel}</span></td>
       <td data-label="Valor" style="color:${valorColor};font-weight:700">${valorSinal} ${fmt(item.valor)}</td>
       <td data-label="Data">${fmtDate(item.data)}</td>
-      <td data-label="Categoria"><span class="chip chip-${isReceita ? 'income' : 'expense'}">${item.categoria}</span></td>
+      <td data-label="Categoria"><span class="chip chip-${tipoChipClass}">${item.categoria}</span></td>
       <td data-label="Status">${statusCell}</td>
       <td>${payBtn}<button class="action-btn edit" onclick="${editFn}('${item.id}')"><iconify-icon icon="mdi:pencil-outline" width="17"></iconify-icon></button><button class="action-btn del" onclick="confirmDelete('${delTipo}','${item.id}')"><iconify-icon icon="mdi:trash-can-outline" width="17"></iconify-icon></button></td>
     </tr>`;
@@ -670,6 +685,7 @@ function setTipoLancamento(tipo) {
   document.getElementById('formLancamento').dataset.tipo = tipo;
 
   document.getElementById('lancStatusField').style.display = tipo === 'despesa' ? '' : 'none';
+  document.getElementById('lancInvestimentoField').style.display = tipo === 'despesa' ? '' : 'none';
 
   document.getElementById('lancRecorrenteLabel').textContent = tipo === 'despesa'
     ? 'É uma dívida ou conta fixa que se repete todo mês?'
@@ -704,6 +720,7 @@ function openLancamentoModal(item = null, tipoForced = null) {
     document.getElementById('lancData').value = item.data;
     if (tipo === 'despesa') {
       document.querySelector(`input[name="lancStatus"][value="${item.status || STATUS_PENDENTE}"]`).checked = true;
+      document.getElementById('lancInvestimento').checked = !!item.isInvestimento;
     }
     // Lançamentos já gerados (instâncias) não editam a recorrência em si —
     // isso é feito na tela de Configurações, na lista de recorrentes.
@@ -725,6 +742,7 @@ async function saveLancamento(e) {
   const tipo = document.getElementById('formLancamento').dataset.tipo || 'receita';
   const id = document.getElementById('lancId').value;
   const isRecorrente = document.getElementById('lancRecorrente').checked;
+  const isInvestimento = tipo === 'despesa' && document.getElementById('lancInvestimento').checked;
   const statusEl = document.querySelector('input[name="lancStatus"]:checked');
 
   const descricao = document.getElementById('lancDescricao').value.trim();
@@ -737,7 +755,10 @@ async function saveLancamento(e) {
     // Editando um lançamento já existente (instância normal, não recriamos a recorrência)
     if (id) {
       const data = { id, descricao, valor, data: dataField, categoria };
-      if (tipo === 'despesa') data.status = statusEl ? statusEl.value : STATUS_PENDENTE;
+      if (tipo === 'despesa') {
+        data.status = statusEl ? statusEl.value : STATUS_PENDENTE;
+        data.isInvestimento = isInvestimento;
+      }
       await fbAdd(colName, data);
       toast('Lançamento atualizado!');
       closeModal('modalLancamento');
@@ -755,7 +776,7 @@ async function saveLancamento(e) {
 
       const recorrenteData = {
         id: genId(),
-        tipo, descricao, valor, categoria, diaMes, lembrete,
+        tipo, descricao, valor, categoria, diaMes, lembrete, isInvestimento,
         criadoEm: today(),
         ultimoMesGerado: null // controla quais meses já foram gerados (evita duplicar)
       };
@@ -772,9 +793,12 @@ async function saveLancamento(e) {
 
     // Lançamento normal (não recorrente)
     const data = { id: genId(), descricao, valor, data: dataField, categoria };
-    if (tipo === 'despesa') data.status = statusEl ? statusEl.value : STATUS_PENDENTE;
+    if (tipo === 'despesa') {
+      data.status = statusEl ? statusEl.value : STATUS_PENDENTE;
+      data.isInvestimento = isInvestimento;
+    }
     await fbAdd(colName, data);
-    toast(tipo === 'receita' ? 'Receita adicionada!' : 'Despesa adicionada!');
+    toast(tipo === 'receita' ? 'Receita adicionada!' : (isInvestimento ? 'Investimento registrado!' : 'Despesa adicionada!'));
     closeModal('modalLancamento');
 
   } catch (err) {
@@ -843,15 +867,15 @@ async function saveMetaEco(e){
    ══════════════════════════════════════ */
 function updateContasBadge(){
   const hoje=new Date();hoje.setHours(0,0,0,0);
-  const vencidas=STATE.despesas.filter(d=>{if(d.status!==STATUS_PENDENTE)return false;const dt=new Date(d.data+'T12:00:00');dt.setHours(0,0,0,0);return dt<hoje;});
+  const vencidas=STATE.despesas.filter(d=>{if(d.status!==STATUS_PENDENTE||d.isInvestimento)return false;const dt=new Date(d.data+'T12:00:00');dt.setHours(0,0,0,0);return dt<hoje;});
   const badge=document.getElementById('contasBadge');
   badge.textContent=vencidas.length;
   badge.setAttribute('data-count',vencidas.length);
 }
 
 function renderContas(){
-  const pendentes=STATE.despesas.filter(d=>d.status===STATUS_PENDENTE);
-  const pagas=filterByMonth(STATE.despesas).filter(d=>d.status===STATUS_PAGO);
+  const pendentes=STATE.despesas.filter(d=>d.status===STATUS_PENDENTE&&!d.isInvestimento);
+  const pagas=filterByMonth(STATE.despesas).filter(d=>d.status===STATUS_PAGO&&!d.isInvestimento);
   const hoje=new Date();hoje.setHours(0,0,0,0);
   const em7=new Date(hoje);em7.setDate(hoje.getDate()+7);
   const vencidas=pendentes.filter(d=>{const dt=new Date(d.data+'T12:00:00');dt.setHours(0,0,0,0);return dt<hoje;});
@@ -936,7 +960,10 @@ async function criarOcorrenciaRecorrente(rec, ano, mesIndex) {
     categoria: rec.categoria,
     origemRecorrenteId: rec.id
   };
-  if (rec.tipo === 'despesa') data.status = STATUS_PENDENTE;
+  if (rec.tipo === 'despesa') {
+    data.status = STATUS_PENDENTE;
+    data.isInvestimento = !!rec.isInvestimento;
+  }
   await fbAdd(colName, data);
 }
 

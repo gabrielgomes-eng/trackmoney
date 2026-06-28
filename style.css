@@ -21,6 +21,8 @@
   --warning-light: #fef3c7;
   --info:          #3b82f6;
   --info-light:    #dbeafe;
+  --invest:        #8b5cf6;   /* violeta — patrimônio/investimento */
+  --invest-light:  #ede9fe;
 
   /* Surfaces */
   --bg:            #f1f5f9;
@@ -77,6 +79,7 @@
   --danger-light:  rgba(239,68,68,.15);
   --warning-light: rgba(245,158,11,.15);
   --info-light:    rgba(59,130,246,.15);
+  --invest-light:  rgba(139,92,246,.18);
 }
 
 /* ══════════════════════════════════════
@@ -364,6 +367,7 @@ body {
 .card-expense .card-icon   { background: var(--danger-light);  color: var(--danger); }
 .card-savings .card-icon   { background: var(--warning-light); color: var(--warning); }
 .card-count .card-icon     { background: var(--surface-2);     color: var(--text-secondary); }
+.card-investimento .card-icon { background: var(--invest-light); color: var(--invest); }
 
 /* ══════════════════════════════════════
    CARDS (generic)
@@ -560,6 +564,7 @@ body {
 .chip-pendente{ background: var(--warning-light); color: var(--warning); }
 .chip-income  { background: var(--accent-light);  color: var(--accent); }
 .chip-expense { background: var(--danger-light);  color: var(--danger); }
+.chip-investimento { background: var(--invest-light); color: var(--invest); }
 
 /* ══════════════════════════════════════
    BUTTONS
@@ -1913,6 +1918,22 @@ body {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px 14px;
+}
+
+.investimento-toggle-group {
+  background: var(--invest-light);
+  border: 1px solid var(--invest);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.investimento-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: .78rem;
+  color: var(--text-secondary);
+  margin: 8px 0 0;
 }
 
 .recorrente-fields {

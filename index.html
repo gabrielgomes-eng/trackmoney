@@ -171,6 +171,13 @@
           <span class="card-value" id="totalLancamentos">0</span>
         </div>
       </div>
+      <div class="summary-card card-investimento">
+        <div class="card-icon"><iconify-icon icon="mdi:chart-line" width="24"></iconify-icon></div>
+        <div class="card-info">
+          <span class="card-label">Patrimônio Investido</span>
+          <span class="card-value" id="patrimonioInvestido">R$ 0,00</span>
+        </div>
+      </div>
     </div>
 
     <!-- DASHBOARD CHARTS -->
@@ -470,6 +477,18 @@
             <input type="radio" name="lancStatus" value="pendente" checked> <span>Pendente</span>
           </label>
         </div>
+      </div>
+
+      <!-- Investimento: só aparece para Saída — trata como patrimônio, não como gasto -->
+      <div class="form-group investimento-toggle-group" id="lancInvestimentoField">
+        <label class="checkbox-label">
+          <input type="checkbox" id="lancInvestimento">
+          <span>💰 Isso é um investimento/aporte (não conta como gasto)</span>
+        </label>
+        <p class="investimento-hint">
+          <iconify-icon icon="mdi:information-outline" width="14"></iconify-icon>
+          Sai do seu saldo, mas não entra no cálculo de "Despesas do mês" — fica guardado como patrimônio.
+        </p>
       </div>
 
       <!-- Recorrência -->
